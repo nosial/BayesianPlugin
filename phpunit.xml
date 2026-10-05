@@ -10,12 +10,9 @@
         <!-- ncc configuration -->
         <env name="NCC_DISABLE_APCU" value="1"/>
 
-        <!-- The FederationLib server with the plugin installed the tests run against (make test-env) -->
+        <!-- Federation Server configuration  -->
         <env name="SERVER_ENDPOINT" value="http://172.17.0.1:7000"/>
         <env name="SERVER_ACCESS_TOKEN" value="abcdefghijklmnopqrstuvwxyz123456"/>
-
-        <!-- The BayesianServer the tests run against, the one bundled with the test environment's FederationLib server, the tests train it -->
-        <env name="BAYESIAN_SERVER_ENDPOINT" value="http://172.17.0.1:6380"/>
 
         <!-- LogLib2 configuration, the same as FederationLib's tests: logs (including the errors the tests cause on purpose) -->
         <env name="LOG_LEVEL" value="debug"/>
