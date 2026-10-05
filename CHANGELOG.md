@@ -15,8 +15,11 @@ This update adds optional direct access to BayesianServer's API through Federati
    as-is (including `PUSH` for training) and its responses are returned unchanged. While disabled, `/bayesian` responds
    like a path that doesn't exist
  - Tests of the proxy against the test environment, which enables it
+ - `BayesianClient` accepts additional HTTP headers sent with every request, eg; to authenticate with the proxy
 
 ### Changed
+ - The tests reach BayesianServer through the proxy as the root operator, the test environment no longer publishes
+   BayesianServer's port and `BAYESIAN_SERVER_ENDPOINT` is no longer used
  - The handlers moved from the `BayesianPlugin\EventHandlers` namespace to `BayesianPlugin\Handlers`
  - Requires a FederationLib version that supports the `PUSH` request method for plugin routes, otherwise FederationLib
    rejects the plugin
