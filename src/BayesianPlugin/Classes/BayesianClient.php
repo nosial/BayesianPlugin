@@ -15,14 +15,18 @@
     class BayesianClient implements BayesianClientInterface
     {
         private string $endpoint;
+        /** @var string[] */
+        private array $headers;
 
         /**
          * BayesianClient Constructor
          *
          * @param string|null $endpoint Optional. The endpoint URL, defaults to the plugin's configuration
+         * @param string[] $headers Optional. Additional HTTP headers sent with every request, eg; an Authorization header
+         *                          when BayesianServer is reached through FederationLib's /bayesian proxy
          * @throws InvalidArgumentException If the endpoint is not a valid URL
          */
-        public function __construct(?string $endpoint=null)
+        public function __construct(?string $endpoint=null, array $headers=[])
         {
             $endpoint ??= Configuration::getEndpoint();
 
@@ -33,6 +37,7 @@
             }
 
             $this->endpoint = rtrim($endpoint, '/');
+            $this->headers = array_values($headers);
         }
 
         /**
@@ -302,7 +307,8 @@
 
             curl_setopt($ch, CURLOPT_HTTPHEADER, [
                 'Content-Type: application/json',
-                'Accept: application/json'
+                'Accept: application/json',
+                ...$this->headers
             ]);
 
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
