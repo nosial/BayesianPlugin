@@ -170,9 +170,9 @@ jobs:
         run: |
           cd federation
           ncc build --config=release --log-level debug
-          ncc install --package=target/release/net.nosial.federation.ncc --yes --reinstall
+          ncc install --package="$PWD/target/release/net.nosial.federation.ncc" --yes --reinstall
           cd ..
-          ncc install --package=target/release/net.nosial.bayesian_plugin.ncc --yes --reinstall
+          ncc install --package="$PWD/target/release/net.nosial.bayesian_plugin.ncc" --yes --reinstall
 
       # SERVER_ENDPOINT and BAYESIAN_SERVER_ENDPOINT are set by phpunit.xml (the docker host, 172.17.0.1)
       - name: Run PHPUnit tests
