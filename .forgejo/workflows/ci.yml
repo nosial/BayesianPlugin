@@ -140,7 +140,7 @@ jobs:
           docker compose -f docker-compose.yml up -d
           echo "Waiting for the server to be ready..."
           for i in $(seq 1 60); do
-            if curl -sf -o /dev/null http://172.17.0.1:7000/ && curl -sf -o /dev/null http://172.17.0.1:6380/health; then
+            if curl -sf -o /dev/null http://172.17.0.1:7000/ && curl -sf -o /dev/null -H "Authorization: Bearer abcdefghijklmnopqrstuvwxyz123456" http://172.17.0.1:7000/bayesian/health; then
               echo "Server is ready!"
               exit 0
             fi
@@ -174,7 +174,6 @@ jobs:
           cd ..
           ncc install --package="$PWD/target/release/net.nosial.bayesian_plugin.ncc" --yes --reinstall
 
-      # SERVER_ENDPOINT and BAYESIAN_SERVER_ENDPOINT are set by phpunit.xml (the docker host, 172.17.0.1)
       - name: Run PHPUnit tests
         env:
           LOGLIB_UDP_ENABLED: false
