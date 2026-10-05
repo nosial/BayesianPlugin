@@ -1,6 +1,6 @@
 <?php
 
-    namespace BayesianPlugin\EventHandlers;
+    namespace BayesianPlugin\Handlers;
 
     use BayesianPlugin\BayesianPlugin;
     use BayesianPlugin\Classes\Classifier;
