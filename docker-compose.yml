@@ -32,6 +32,8 @@ services:
       - FEDERATION_PLUGINS=net.nosial.bayesian_plugin
       # The plugin's own configuration, the defaults connect to the bundled BayesianServer
       - BAYESIAN_PLUGIN_MINIMUM_DOCUMENTS=10
+      # The BayesianServer proxy (/bayesian/*) is disabled by default, the tests cover it
+      - BAYESIAN_PLUGIN_PROXY=true
 
   mariadb:
     image: mariadb:10.5
