@@ -53,10 +53,30 @@ The confidence of a classification is the probability BayesianServer gives its t
 **If BayesianServer is unavailable**, scans and other operations still succeed, the content just isn't classified
 and the error is logged.
 
-| Event handler               | Handles                                                   |
+**Direct access to BayesianServer.** When the `proxy` option is enabled, the root operator can use BayesianServer's
+API through FederationLib, every request below `/bayesian` is passed on to BayesianServer as-is and its response is
+returned unchanged:
+
+| FederationLib               | BayesianServer      |
+|-----------------------------|---------------------|
+| `GET /bayesian/`            | `GET /` (status)    |
+| `POST /bayesian/`           | `POST /` (classify) |
+| `PUSH /bayesian/`           | `PUSH /` (train)    |
+| `GET /bayesian/health`      | `GET /health`       |
+| `POST /bayesian/analytics`  | `POST /analytics`   |
+
+The request's method, query string, body and `Content-Type` are forwarded, BayesianServer's status code,
+`Content-Type` and body are returned. Any other operator is refused (`403`), and anonymous requests need to
+authenticate (`401`). The operator's access token is never sent to BayesianServer.
+
+The proxy is disabled by default, since it gives direct control over the model, including training it without
+classified evidence. While disabled, `/bayesian` responds like a path that doesn't exist.
+
+| Handler                     | Handles                                                   |
 |-----------------------------|-----------------------------------------------------------|
 | `ContentScanHandler`        | `CONTENT_SCAN`, classifies scanned content                |
 | `EvidenceClassifiedHandler` | `RECORD_CHANGE` (`EVIDENCE_CLASSIFIED`), trains the model |
+| `BayesianProxyHandler`      | The `/bayesian/*` route, proxies BayesianServer's API     |
 
 ## Configuration
 
@@ -71,6 +91,7 @@ environment variable. The defaults connect to the BayesianServer bundled with th
 | `classify_known_tokens` | `BAYESIAN_PLUGIN_CLASSIFY_KNOWN_TOKENS` | boolean | `true`        | Skip the classification when the majority of the content's tokens are unknown        |
 | `minimum_documents`     | `BAYESIAN_PLUGIN_MINIMUM_DOCUMENTS`     | integer | `10`          | Training documents required in total and per label before content is classified      |
 | `learning`              | `BAYESIAN_PLUGIN_LEARNING`              | boolean | `true`        | Train BayesianServer with the text content of classified evidence                    |
+| `proxy`                 | `BAYESIAN_PLUGIN_PROXY`                 | boolean | `false`       | Proxy BayesianServer's API below `/bayesian` for the root operator                   |
 
 ## Installation
 
@@ -113,19 +134,19 @@ make test-env-down    # Removes the test environment and its data
 The tests run against a live FederationLib server with the plugin installed, started with Docker Compose
 (`docker-compose.yml`):
 
-| Service   | Description                                                                                          | Port                            |
-|-----------|------------------------------------------------------------------------------------------------------|---------------------------------|
-| `app`     | FederationLib's published `dev` image (`ghcr.io/nosial/federationlib:dev`) with the plugin installed | `7000` (`FEDERATION_PORT`)      |
-|           | The BayesianServer bundled with FederationLib's image, the one the plugin uses                       | `6380` (`BAYESIAN_SERVER_PORT`) |
-| `mariadb` | FederationLib's database                                                                             | -                               |
-| `redis`   | FederationLib's cache                                                                                | -                               |
+| Service   | Description                                                                                          | Port                       |
+|-----------|------------------------------------------------------------------------------------------------------|----------------------------|
+| `app`     | FederationLib's published `dev` image (`ghcr.io/nosial/federationlib:dev`) with the plugin installed | `7000` (`FEDERATION_PORT`) |
+| `mariadb` | FederationLib's database                                                                             | -                          |
+| `redis`   | FederationLib's cache                                                                                | -                          |
 
 The `Dockerfile` builds the plugin from source and adds it to FederationLib's image. FederationLib's entrypoint
-installs it and enables it through `REQUIRE_PLUGINS` and `FEDERATION_PLUGINS`. The image is only used for testing and
-is never published.
+installs it and enables it through `REQUIRE_PLUGINS` and `FEDERATION_PLUGINS`, with its `proxy` option enabled. The
+BayesianServer bundled with FederationLib's image isn't published, the tests reach it through the plugin's `/bayesian`
+proxy as the root operator. The image is only used for testing and is never published.
 
  - `make test-env` builds with `--pull`, so the tests always run against the latest build of FederationLib's `dev`
-   image rather than an outdated local copy. It then waits until FederationLib and BayesianServer respond.
+   image rather than an outdated local copy. It then waits until FederationLib and BayesianServer (through the proxy) respond.
  - The plugin inside the container is the one built when the image was built, not `target/release`. Run
    `make test-env` again after changing the plugin, otherwise the tests against the server use the old plugin.
  - Nothing is persisted: `make test-env-down` removes the database and the trained model.
@@ -145,17 +166,16 @@ ncc install --package="$PWD/target/release/net.nosial.bayesian_plugin.ncc" --yes
 
 The tests are configured by `phpunit.xml`, an environment variable that is already set takes precedence:
 
-| Environment Variable       | Default                            | Description                                                          |
-|----------------------------|------------------------------------|----------------------------------------------------------------------|
-| `SERVER_ENDPOINT`          | `http://172.17.0.1:7000`           | The FederationLib server of the test environment                     |
-| `SERVER_ACCESS_TOKEN`      | `abcdefghijklmnopqrstuvwxyz123456` | Its access token (`FEDERATION_ACCESS_TOKEN` of `docker-compose.yml`) |
-| `BAYESIAN_SERVER_ENDPOINT` | `http://172.17.0.1:6380`           | The BayesianServer bundled with that FederationLib server            |
-| `NCC_BUILD_OUTPUT_PATH`    | `target/release/...`               | The plugin `.ncc` package to import                                  |
+| Environment Variable    | Default                            | Description                                                                   |
+|-------------------------|------------------------------------|-------------------------------------------------------------------------------|
+| `SERVER_ENDPOINT`       | `http://172.17.0.1:7000`           | The FederationLib server of the test environment                              |
+| `SERVER_ACCESS_TOKEN`   | `abcdefghijklmnopqrstuvwxyz123456` | The root operator's access token (`FEDERATION_ACCESS_TOKEN`), for `/bayesian` |
+| `NCC_BUILD_OUTPUT_PATH` | `target/release/...`               | The plugin `.ncc` package to import                                           |
 
 The endpoints use the Docker host's bridge address (`172.17.0.1`), the same as FederationLib's tests, so they work
 from the host and from a CI job's container. Where the bridge isn't reachable (eg; Docker Desktop), use
-`http://127.0.0.1:7000` and `http://127.0.0.1:6380`. The tests train the BayesianServer, so only run them against
-the test environment. A test fails rather than being skipped if a server is unreachable.
+`http://127.0.0.1:7000`. The tests train the BayesianServer, so only run them against the test environment. A test
+fails rather than being skipped if the server is unreachable.
 
 # License
 
