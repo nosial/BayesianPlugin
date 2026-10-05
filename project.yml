@@ -21,6 +21,12 @@ build_configurations:
       NCC_DEBUG: true
     options:
       federationlib: &federationlib
+        request_handlers:
+          # Proxies BayesianServer's API for the root operator, eg; POST /bayesian/analytics to POST /analytics
+          -
+            path: /bayesian/*
+            class: \BayesianPlugin\RequestHandlers\BayesianProxyHandler::class
+            request_method: GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, PUSH
         event_handlers:
           # Classifies the content of every content scan with BayesianServer
           -
