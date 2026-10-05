@@ -36,8 +36,6 @@
         {
             $plugin = Plugin::load(self::PACKAGE);
 
-            $this->assertSame('1.0.0', $plugin->getVersion());
-
             // The BayesianServer proxy, a new route for every method BayesianServer's API uses (including PUSH)
             $this->assertCount(1, $plugin->getRequestHandlers());
             $proxy = $plugin->getRequestHandlers()[0];

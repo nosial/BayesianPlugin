@@ -234,43 +234,39 @@
 
         public function testProxyHealth(): void
         {
-            $this->assertProxiedLikeDirect('GET', '/health');
+            $response = $this->proxyRequest('GET', '/bayesian/health');
+
+            $this->assertSame(200, $response['code'], $response['body']);
+            $this->assertStringStartsWith('application/json', (string)$response['content_type']);
+            $this->assertSame(true, json_decode($response['body'], true)['status'] ?? null);
         }
 
         public function testProxyStatus(): void
         {
-            $proxied = $this->proxyRequest('GET', '/bayesian/');
-            $direct = $this->directRequest('GET', '/');
+            foreach(['/bayesian/', '/bayesian'] as $path)
+            {
+                $response = $this->proxyRequest('GET', $path);
+                $this->assertSame(200, $response['code'], $response['body']);
 
-            // The uptime changes between the two requests, the rest of the diagnostics are the same
-            $this->assertSame($direct['code'], $proxied['code']);
-            $this->assertSame($direct['content_type'], $proxied['content_type']);
-            $proxiedStatus = json_decode($proxied['body'], true);
-            $directStatus = json_decode($direct['body'], true);
-            $this->assertIsArray($proxiedStatus);
-            $this->assertSame(array_keys($directStatus), array_keys($proxiedStatus));
-            $this->assertSame($directStatus['model'] ?? null, $proxiedStatus['model'] ?? null);
-
-            // The same path without the trailing slash
-            $this->assertSame(200, $this->proxyRequest('GET', '/bayesian')['code']);
+                // BayesianServer's diagnostics, not one of FederationLib's responses
+                $status = json_decode($response['body'], true);
+                $this->assertIsArray($status);
+                $this->assertArrayNotHasKey('success', $status);
+                $this->assertArrayHasKey('model', $status);
+                $this->assertArrayHasKey('learning', $status);
+            }
         }
 
         public function testProxyClassification(): void
         {
-            foreach(ClassificationFlag::cases() as $flag)
-            {
-                $body = json_encode(['text' => TrainingData::trainingSamples($flag)[0], 'top_k' => 3]);
-                $proxied = $this->proxyRequest('POST', '/bayesian/', $body);
-                $direct = $this->directRequest('POST', '/', $body);
+            $response = $this->proxyRequest('POST', '/bayesian/', json_encode(['text' => TrainingData::trainingSamples(ClassificationFlag::MALICIOUS)[0], 'top_k' => 3]));
+            $this->assertSame(200, $response['code'], $response['body']);
 
-                $this->assertSame($direct['code'], $proxied['code']);
-                $this->assertSame($direct['content_type'], $proxied['content_type']);
-                $proxiedClassification = json_decode($proxied['body'], true);
-                $directClassification = json_decode($direct['body'], true);
-                $this->assertIsArray($proxiedClassification);
-                $this->assertSame($directClassification['top_label'] ?? null, $proxiedClassification['top_label'] ?? null);
-                $this->assertSame($directClassification['labels'] ?? null, $proxiedClassification['labels'] ?? null);
-            }
+            // BayesianServer's classification as-is, the same one the plugin's client parses
+            $classification = json_decode($response['body'], true);
+            $this->assertIsArray($classification);
+            $this->assertContains($classification['top_label'] ?? null, array_map(fn(ClassificationFlag $flag) => $flag->value, ClassificationFlag::cases()));
+            $this->assertNotEmpty($classification['labels'] ?? null);
         }
 
         public function testProxyTraining(): void
@@ -286,14 +282,25 @@
 
         public function testProxyQueryString(): void
         {
-            $this->assertProxiedLikeDirect('GET', '/analytics?limit=1&offset=0&sort=asc');
+            // BayesianServer responds with the limit and offset it applied, the defaults are 100 and 0
+            $response = $this->proxyRequest('GET', '/bayesian/analytics?limit=7&offset=3');
+            $this->assertSame(200, $response['code'], $response['body']);
+
+            $analytics = json_decode($response['body'], true);
+            $this->assertSame(7, $analytics['limit'] ?? null);
+            $this->assertSame(3, $analytics['offset'] ?? null);
         }
 
         public function testProxyPassesErrorsThrough(): void
         {
-            // BayesianServer's own errors, not FederationLib's
-            $this->assertSame(404, $this->assertProxiedLikeDirect('GET', '/no-such-route')['code']);
-            $this->assertSame(405, $this->assertProxiedLikeDirect('DELETE', '/health')['code']);
+            // BayesianServer's own errors, for the path without the /bayesian prefix
+            $response = $this->proxyRequest('GET', '/bayesian/no-such-route');
+            $this->assertSame(404, $response['code']);
+            $this->assertSame(['error' => 'no such route: /no-such-route', 'status' => 404], json_decode($response['body'], true));
+
+            $response = $this->proxyRequest('DELETE', '/bayesian/health');
+            $this->assertSame(405, $response['code']);
+            $this->assertStringContainsString('method DELETE not allowed for /health', json_decode($response['body'], true)['error'] ?? '');
         }
 
         // ---------------------------------------------------------------------------------------------------------
@@ -306,24 +313,6 @@
         }
 
         /**
-         * Sends the same request through the proxy and directly to BayesianServer, and asserts the responses are the
-         * same
-         *
-         * @return array{code: int, content_type: ?string, body: string} The proxied response
-         */
-        private function assertProxiedLikeDirect(string $method, string $pathAndQuery, ?string $body=null): array
-        {
-            $proxied = $this->proxyRequest($method, '/bayesian' . $pathAndQuery, $body);
-            $direct = $this->directRequest($method, $pathAndQuery, $body);
-
-            $this->assertSame($direct['code'], $proxied['code'], $proxied['body']);
-            $this->assertSame($direct['content_type'], $proxied['content_type']);
-            $this->assertSame($direct['body'], $proxied['body']);
-
-            return $proxied;
-        }
-
-        /**
          * Sends a request to FederationLib as the root operator (SERVER_ACCESS_TOKEN)
          *
          * @return array{code: int, content_type: ?string, body: string}
@@ -331,16 +320,6 @@
         private function proxyRequest(string $method, string $pathAndQuery, ?string $body=null): array
         {
             return self::httpRequest($method, self::getServerEndpoint() . $pathAndQuery, $body, getenv('SERVER_ACCESS_TOKEN') ?: null);
-        }
-
-        /**
-         * Sends a request directly to BayesianServer
-         *
-         * @return array{code: int, content_type: ?string, body: string}
-         */
-        private function directRequest(string $method, string $pathAndQuery, ?string $body=null): array
-        {
-            return self::httpRequest($method, rtrim(BayesianServerHelper::getEndpoint(), '/') . $pathAndQuery, $body, null);
         }
 
         /**

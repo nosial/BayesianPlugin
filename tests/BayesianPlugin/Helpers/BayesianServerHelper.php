@@ -9,7 +9,9 @@
     use PHPUnit\Framework\Assert;
 
     /**
-     * Provides the BayesianServer the tests run against (BAYESIAN_SERVER_ENDPOINT), and trains it once per test run
+     * Provides the BayesianServer the tests run against, the one bundled with the test environment's FederationLib
+     * server, reached through the plugin's /bayesian proxy as the root operator (SERVER_ENDPOINT, SERVER_ACCESS_TOKEN),
+     * and trains it once per test run
      */
     class BayesianServerHelper
     {
@@ -18,13 +20,24 @@
         private static bool $trained = false;
 
         /**
-         * Returns the endpoint of the BayesianServer the tests run against
+         * Returns the endpoint of the BayesianServer the tests run against, the plugin's proxy
          *
-         * @return string The endpoint
+         * @return string The endpoint, eg; http://172.17.0.1:7000/bayesian
          */
         public static function getEndpoint(): string
         {
-            return getenv('BAYESIAN_SERVER_ENDPOINT') ?: 'http://172.17.0.1:6380';
+            return rtrim(getenv('SERVER_ENDPOINT') ?: 'http://172.17.0.1:7000', '/') . '/bayesian';
+        }
+
+        /**
+         * Returns the headers that authenticate requests to the proxy as the root operator
+         *
+         * @return string[] The headers
+         */
+        public static function getHeaders(): array
+        {
+            $accessToken = getenv('SERVER_ACCESS_TOKEN');
+            return $accessToken ? ['Authorization: Bearer ' . $accessToken] : [];
         }
 
         /**
@@ -34,7 +47,7 @@
          */
         public static function getClient(): BayesianClient
         {
-            $client = new BayesianClient(self::getEndpoint());
+            $client = new BayesianClient(self::getEndpoint(), self::getHeaders());
 
             try
             {
@@ -45,7 +58,7 @@
             }
             catch(BayesianException $e)
             {
-                Assert::fail(sprintf('BayesianServer is not reachable at %s (set BAYESIAN_SERVER_ENDPOINT): %s', self::getEndpoint(), $e->getMessage()));
+                Assert::fail(sprintf('BayesianServer is not reachable at %s, start the test environment with "make test-env" (the plugin\'s proxy must be enabled with BAYESIAN_PLUGIN_PROXY and SERVER_ACCESS_TOKEN must be the root operator\'s): %s', self::getEndpoint(), $e->getMessage()));
             }
 
             return $client;
