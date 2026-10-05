@@ -7,8 +7,8 @@
     use BayesianPlugin\BayesianPlugin;
     use BayesianPlugin\Classes\BayesianClient;
     use BayesianPlugin\Classes\Classifier;
-    use BayesianPlugin\EventHandlers\ContentScanHandler;
-    use BayesianPlugin\EventHandlers\EvidenceClassifiedHandler;
+    use BayesianPlugin\Handlers\ContentScanHandler;
+    use BayesianPlugin\Handlers\EvidenceClassifiedHandler;
     use BayesianPlugin\Exceptions\BayesianException;
     use BayesianPlugin\Objects\BayesianAnalytics;
     use BayesianPlugin\Tests\Helpers\BayesianServerHelper;

@@ -40,6 +40,8 @@
         private array $createdEvidence = [];
         /** @var string[] */
         private array $createdReports = [];
+        /** @var string[] */
+        private array $createdOperators = [];
 
         protected function setUp(): void
         {
@@ -73,6 +75,11 @@
             foreach($this->createdEntities as $entityUuid)
             {
                 try { $this->client->deleteEntity($entityUuid); } catch(Throwable) {}
+            }
+
+            foreach($this->createdOperators as $operatorUuid)
+            {
+                try { $this->client->deleteOperator($operatorUuid); } catch(Throwable) {}
             }
 
             Logger::unregisterHandlers();
@@ -202,12 +209,179 @@
         }
 
         // ---------------------------------------------------------------------------------------------------------
+        // BayesianServer proxy (/bayesian/*)
+        // ---------------------------------------------------------------------------------------------------------
+
+        public function testProxyRequiresAuthentication(): void
+        {
+            $response = self::httpRequest('GET', self::getServerEndpoint() . '/bayesian/health', null, null);
+            $this->assertSame(401, $response['code']);
+        }
+
+        public function testProxyRequiresTheRootOperator(): void
+        {
+            // Even an operator with every permission is not the root operator
+            $operator = $this->client->createOperator(substr(uniqid('bayesianproxy'), 0, 32));
+            $this->createdOperators[] = $operator->getUuid();
+            $this->client->setManagementPermissions($operator->getUuid(), true);
+            $this->client->setOperatorPermissions($operator->getUuid(), true);
+            $this->client->setClientPermissions($operator->getUuid(), true);
+
+            $response = self::httpRequest('GET', self::getServerEndpoint() . '/bayesian/health', null, $operator->getAccessToken());
+            $this->assertSame(403, $response['code']);
+            $this->assertStringNotContainsString('"status":true', $response['body']);
+        }
+
+        public function testProxyHealth(): void
+        {
+            $this->assertProxiedLikeDirect('GET', '/health');
+        }
+
+        public function testProxyStatus(): void
+        {
+            $proxied = $this->proxyRequest('GET', '/bayesian/');
+            $direct = $this->directRequest('GET', '/');
+
+            // The uptime changes between the two requests, the rest of the diagnostics are the same
+            $this->assertSame($direct['code'], $proxied['code']);
+            $this->assertSame($direct['content_type'], $proxied['content_type']);
+            $proxiedStatus = json_decode($proxied['body'], true);
+            $directStatus = json_decode($direct['body'], true);
+            $this->assertIsArray($proxiedStatus);
+            $this->assertSame(array_keys($directStatus), array_keys($proxiedStatus));
+            $this->assertSame($directStatus['model'] ?? null, $proxiedStatus['model'] ?? null);
+
+            // The same path without the trailing slash
+            $this->assertSame(200, $this->proxyRequest('GET', '/bayesian')['code']);
+        }
+
+        public function testProxyClassification(): void
+        {
+            foreach(ClassificationFlag::cases() as $flag)
+            {
+                $body = json_encode(['text' => TrainingData::trainingSamples($flag)[0], 'top_k' => 3]);
+                $proxied = $this->proxyRequest('POST', '/bayesian/', $body);
+                $direct = $this->directRequest('POST', '/', $body);
+
+                $this->assertSame($direct['code'], $proxied['code']);
+                $this->assertSame($direct['content_type'], $proxied['content_type']);
+                $proxiedClassification = json_decode($proxied['body'], true);
+                $directClassification = json_decode($direct['body'], true);
+                $this->assertIsArray($proxiedClassification);
+                $this->assertSame($directClassification['top_label'] ?? null, $proxiedClassification['top_label'] ?? null);
+                $this->assertSame($directClassification['labels'] ?? null, $proxiedClassification['labels'] ?? null);
+            }
+        }
+
+        public function testProxyTraining(): void
+        {
+            $before = $this->getLearnRequests();
+
+            $response = $this->proxyRequest('PUSH', '/bayesian/', json_encode(['text' => $this->uniqueText(ClassificationFlag::NORMAL), 'label' => ClassificationFlag::NORMAL->value]));
+
+            $this->assertSame(202, $response['code'], $response['body']);
+            $this->assertTrue(json_decode($response['body'], true)['accepted'] ?? false);
+            $this->waitForLearnRequests($before + 1);
+        }
+
+        public function testProxyQueryString(): void
+        {
+            $this->assertProxiedLikeDirect('GET', '/analytics?limit=1&offset=0&sort=asc');
+        }
+
+        public function testProxyPassesErrorsThrough(): void
+        {
+            // BayesianServer's own errors, not FederationLib's
+            $this->assertSame(404, $this->assertProxiedLikeDirect('GET', '/no-such-route')['code']);
+            $this->assertSame(405, $this->assertProxiedLikeDirect('DELETE', '/health')['code']);
+        }
+
+        // ---------------------------------------------------------------------------------------------------------
         // Helpers
         // ---------------------------------------------------------------------------------------------------------
 
         private static function getServerEndpoint(): string
         {
-            return getenv('SERVER_ENDPOINT') ?: 'http://172.17.0.1:7000';
+            return rtrim(getenv('SERVER_ENDPOINT') ?: 'http://172.17.0.1:7000', '/');
+        }
+
+        /**
+         * Sends the same request through the proxy and directly to BayesianServer, and asserts the responses are the
+         * same
+         *
+         * @return array{code: int, content_type: ?string, body: string} The proxied response
+         */
+        private function assertProxiedLikeDirect(string $method, string $pathAndQuery, ?string $body=null): array
+        {
+            $proxied = $this->proxyRequest($method, '/bayesian' . $pathAndQuery, $body);
+            $direct = $this->directRequest($method, $pathAndQuery, $body);
+
+            $this->assertSame($direct['code'], $proxied['code'], $proxied['body']);
+            $this->assertSame($direct['content_type'], $proxied['content_type']);
+            $this->assertSame($direct['body'], $proxied['body']);
+
+            return $proxied;
+        }
+
+        /**
+         * Sends a request to FederationLib as the root operator (SERVER_ACCESS_TOKEN)
+         *
+         * @return array{code: int, content_type: ?string, body: string}
+         */
+        private function proxyRequest(string $method, string $pathAndQuery, ?string $body=null): array
+        {
+            return self::httpRequest($method, self::getServerEndpoint() . $pathAndQuery, $body, getenv('SERVER_ACCESS_TOKEN') ?: null);
+        }
+
+        /**
+         * Sends a request directly to BayesianServer
+         *
+         * @return array{code: int, content_type: ?string, body: string}
+         */
+        private function directRequest(string $method, string $pathAndQuery, ?string $body=null): array
+        {
+            return self::httpRequest($method, rtrim(BayesianServerHelper::getEndpoint(), '/') . $pathAndQuery, $body, null);
+        }
+
+        /**
+         * @return array{code: int, content_type: ?string, body: string}
+         */
+        private static function httpRequest(string $method, string $url, ?string $body, ?string $accessToken): array
+        {
+            $headers = [];
+            if($body !== null)
+            {
+                $headers[] = 'Content-Type: application/json';
+            }
+            if($accessToken !== null)
+            {
+                $headers[] = 'Authorization: Bearer ' . $accessToken;
+            }
+
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [
+                CURLOPT_CUSTOMREQUEST => $method,
+                CURLOPT_HTTPHEADER => $headers,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 30,
+            ]);
+            if($body !== null)
+            {
+                curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
+            }
+
+            $response = curl_exec($ch);
+            if($response === false)
+            {
+                throw new \RuntimeException(sprintf('Request [%s] %s failed: %s', $method, $url, curl_error($ch)));
+            }
+
+            $contentType = curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
+            return [
+                'code' => curl_getinfo($ch, CURLINFO_RESPONSE_CODE),
+                'content_type' => is_string($contentType) ? $contentType : null,
+                'body' => $response,
+            ];
         }
 
         private function createEntity(): string

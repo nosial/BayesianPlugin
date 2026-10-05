@@ -5,6 +5,7 @@
     namespace BayesianPlugin\Tests;
 
     use BayesianPlugin\BayesianPlugin;
+    use BayesianPlugin\Handlers\BayesianProxyHandler;
     use BayesianPlugin\Tests\Helpers\FakeBayesianClient;
     use FederationLib\Classes\PluginManager;
     use FederationLib\Enums\ClassificationFlag;
@@ -36,7 +37,18 @@
             $plugin = Plugin::load(self::PACKAGE);
 
             $this->assertSame('1.0.0', $plugin->getVersion());
-            $this->assertSame([], $plugin->getRequestHandlers());
+
+            // The BayesianServer proxy, a new route for every method BayesianServer's API uses (including PUSH)
+            $this->assertCount(1, $plugin->getRequestHandlers());
+            $proxy = $plugin->getRequestHandlers()[0];
+            $this->assertSame('/bayesian/*', $proxy->getPath());
+            $this->assertSame(BayesianProxyHandler::class, $proxy->getClass());
+            $this->assertNull($proxy->getExecutionPriority());
+            foreach(['GET', 'POST', 'PUSH', 'HEAD'] as $method)
+            {
+                $this->assertContains($method, $proxy->getRequestMethods());
+            }
+
             $this->assertCount(1, $plugin->getEventHandlers(EventType::CONTENT_SCAN));
             $this->assertCount(1, $plugin->getEventHandlers(EventType::RECORD_CHANGE));
             $this->assertSame(['EVIDENCE_CLASSIFIED'], $plugin->getEventHandlers(EventType::RECORD_CHANGE)[0]->getFilter());
@@ -62,5 +74,14 @@
             $this->assertSame(ClassificationFlag::MALICIOUS, $scannedContent->getClassification()->getClassificationFlag());
             $this->assertLessThan(0.0, $scannedContent->getScanResults()[ScanningRules::CLASSIFICATION_MALICIOUS->name]);
             $this->assertGreaterThan(new ScannedContent([])->getRiskScore(), $scannedContent->getRiskScore());
+        }
+
+        public function testProxyPathMapsToBayesianServerPath(): void
+        {
+            $this->assertSame('/', BayesianProxyHandler::getBayesianPath('/bayesian'));
+            $this->assertSame('/', BayesianProxyHandler::getBayesianPath('/bayesian/'));
+            $this->assertSame('/health', BayesianProxyHandler::getBayesianPath('/bayesian/health'));
+            $this->assertSame('/analytics', BayesianProxyHandler::getBayesianPath('/bayesian/analytics'));
+            $this->assertSame('/some/nested/path/', BayesianProxyHandler::getBayesianPath('/bayesian/some/nested/path/'));
         }
     }

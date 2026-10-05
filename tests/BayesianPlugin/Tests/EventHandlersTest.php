@@ -5,8 +5,8 @@
     namespace BayesianPlugin\Tests;
 
     use BayesianPlugin\BayesianPlugin;
-    use BayesianPlugin\EventHandlers\ContentScanHandler;
-    use BayesianPlugin\EventHandlers\EvidenceClassifiedHandler;
+    use BayesianPlugin\Handlers\ContentScanHandler;
+    use BayesianPlugin\Handlers\EvidenceClassifiedHandler;
     use BayesianPlugin\Tests\Helpers\FakeBayesianClient;
     use FederationLib\Enums\ClassificationFlag;
     use FederationLib\Enums\RecordChangeType;
