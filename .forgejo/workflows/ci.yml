@@ -122,17 +122,13 @@ jobs:
       volumes:
         - /var/run/docker.sock:/var/run/docker.sock
     if: needs.check-phpunit.outputs.phpunit-exists == 'true'
-    env:
-      # The FederationLib image the plugin is installed into, built from the FederationLib checkout (see "Deploy Docker
-      # Compose environment"), docker-compose.yml installs the plugin built from this repository into it
-      FEDERATIONLIB_IMAGE: bayesian-plugin-federationlib
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
 
       # FederationLib provides the plugin system (only on its dev branch), tests/bootstrap.php imports its build output
-      # from federation/ and its docker image is the server the tests run against
+      # from federation/, the server the tests run against is its published image (ghcr.io/nosial/federationlib:dev)
       - name: Checkout FederationLib
         uses: actions/checkout@v7
         with:
@@ -156,10 +152,9 @@ jobs:
           apt-get update -qq && apt-get install -y -qq docker.io docker-compose
           docker-php-ext-install sockets
           export DOCKER_BUILDKIT=1
-          # FederationLib's own (production) image, built from the checkout, the plugin is installed into it by the
-          # Dockerfile of this repository
-          docker build -t "$FEDERATIONLIB_IMAGE" federation
-          docker compose -f docker-compose.yml up -d --build
+          # The Dockerfile installs the plugin built from this repository into ghcr.io/nosial/federationlib:dev
+          docker compose -f docker-compose.yml build --pull
+          docker compose -f docker-compose.yml up -d
           echo "Waiting for the server to be ready..."
           for i in $(seq 1 60); do
             if curl -sf -o /dev/null http://172.17.0.1:7000/ && curl -sf -o /dev/null http://172.17.0.1:6380/health; then

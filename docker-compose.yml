@@ -5,8 +5,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      args:
-        FEDERATIONLIB_IMAGE: ${FEDERATIONLIB_IMAGE:-ghcr.io/nosial/federationlib:dev}
     ports:
       # FederationLib (SERVER_ENDPOINT)
       - "${FEDERATION_PORT:-7000}:7000"

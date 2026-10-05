@@ -4,12 +4,9 @@ target/debug/net.nosial.bayesian_plugin.ncc:
 target/release/net.nosial.bayesian_plugin.ncc:
 	ncc build --configuration release --log-level debug
 
-# FederationLib provides the plugin system and the server the tests run against, it is checked out in federation/
-# unless FEDERATIONLIB_SOURCE points to another checkout, eg; make test-env FEDERATIONLIB_SOURCE=../FederationLib
-FEDERATIONLIB_SOURCE ?= federation
+# FederationLib provides the plugin system, tests/bootstrap.php imports its build output from the checkout in federation/
 FEDERATIONLIB_REPOSITORY ?= https://github.com/nosial/federationlib
 FEDERATIONLIB_BRANCH ?= dev
-FEDERATIONLIB_IMAGE ?= ghcr.io/nosial/federationlib:dev
 TEST_COMPOSE = docker compose -f docker-compose.yml
 SERVER_ENDPOINT ?= http://172.17.0.1:7000
 BAYESIAN_SERVER_ENDPOINT ?= http://172.17.0.1:6380
@@ -17,17 +14,14 @@ BAYESIAN_SERVER_ENDPOINT ?= http://172.17.0.1:6380
 federation:
 	git clone --branch $(FEDERATIONLIB_BRANCH) $(FEDERATIONLIB_REPOSITORY) federation
 
-# Imported by tests/bootstrap.php
 federation/target/release/net.nosial.federation.ncc: | federation
 	cd federation && ncc build --configuration release --log-level debug
 
-# Builds FederationLib's own (production) docker image from federation/, the test image installs the plugin into it
-federation-image: | $(FEDERATIONLIB_SOURCE)
-	docker build -t $(FEDERATIONLIB_IMAGE) $(FEDERATIONLIB_SOURCE)
-
-# Starts the docker environment from Dockerfile, a FederationLib server with the plugin installed and enabled
-test-env: federation-image
-	FEDERATIONLIB_IMAGE=$(FEDERATIONLIB_IMAGE) $(TEST_COMPOSE) up -d --build
+# Starts the docker environment from Dockerfile, FederationLib's published dev image (pulled, a local copy may be
+# outdated) with the plugin built from source, installed and enabled
+test-env:
+	$(TEST_COMPOSE) build --pull
+	$(TEST_COMPOSE) up -d
 	@echo "Waiting for the test environment to be ready..."
 	@for i in $$(seq 1 60); do \
 		if curl -sf -o /dev/null "$(SERVER_ENDPOINT)/" && curl -sf -o /dev/null "$(BAYESIAN_SERVER_ENDPOINT)/health"; then \
@@ -47,4 +41,4 @@ clean:
 	rm -f target/debug/net.nosial.bayesian_plugin.ncc
 	rm -f target/release/net.nosial.bayesian_plugin.ncc
 
-.PHONY: all install clean test federation-image test-env test-env-down
+.PHONY: all install clean test test-env test-env-down
