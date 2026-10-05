@@ -11,7 +11,7 @@ assembly:
   package: net.nosial.bayesian_plugin
   version: 1.0.0
 dependencies:
-  net.nosial.federation: nosial/federationlib:dev@github
+  net.nosial.federation: nosial/federationlib@github
 build_configurations:
   -
     name: debug
