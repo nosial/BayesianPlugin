@@ -1,11 +1,17 @@
 source: src
 default_build: release
+update_source: nosial/federationlib@n64
+repository:
+  name: n64
+  type: github
+  host: git.n64.cc
+  ssl: true
 assembly:
   name: BayesianPlugin
   package: net.nosial.bayesian_plugin
   version: 1.0.0
-# FederationLib (and its dependencies ConfigLib and LogLib2) are provided by the host at runtime, plugins do not need
-# to depend on net.nosial.federation
+dependencies:
+  net.nosial.federation: nosial/federationlib:dev@github
 build_configurations:
   -
     name: debug
@@ -22,8 +28,9 @@ build_configurations:
             class: \BayesianPlugin\EventHandlers\ContentScanHandler::class
           # Trains BayesianServer with the text content of classified evidence
           -
-            event: EVIDENCE_CLASSIFIED
+            event: RECORD_CHANGE
             class: \BayesianPlugin\EventHandlers\EvidenceClassifiedHandler::class
+            filter: EVIDENCE_CLASSIFIED
   -
     name: release
     output: 'target/release/${ASSEMBLY.PACKAGE}.ncc'
