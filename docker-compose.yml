@@ -1,0 +1,64 @@
+name: bayesian-plugin-test
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        FEDERATIONLIB_IMAGE: ${FEDERATIONLIB_IMAGE:-ghcr.io/nosial/federationlib:dev}
+    ports:
+      # FederationLib (SERVER_ENDPOINT)
+      - "${FEDERATION_PORT:-7000}:7000"
+      # The BayesianServer bundled with FederationLib, used by the plugin and trained by the tests (BAYESIAN_SERVER_ENDPOINT)
+      - "${BAYESIAN_SERVER_PORT:-6380}:6380"
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      # FederationLib Configuration
+      - FEDERATION_DATABASE_HOST=mariadb
+      - FEDERATION_DATABASE_PORT=3306
+      - FEDERATION_DATABASE_USERNAME=federation
+      - FEDERATION_DATABASE_PASSWORD=federation
+      - FEDERATION_DATABASE_NAME=federation
+      - FEDERATION_REDIS_ENABLED=true
+      - FEDERATION_REDIS_HOST=redis
+      - FEDERATION_REDIS_PORT=6379
+      - FEDERATION_ACCESS_TOKEN=${FEDERATION_ACCESS_TOKEN:-abcdefghijklmnopqrstuvwxyz123456}
+      # Installed by docker-entrypoint.sh before `federationlib init`
+      - REQUIRE_PLUGINS=/opt/federationlib/plugins/net.nosial.bayesian_plugin.ncc
+      # The plugins FederationLib loads
+      - FEDERATION_PLUGINS=net.nosial.bayesian_plugin
+      # The plugin's own configuration, the defaults connect to the bundled BayesianServer
+      - BAYESIAN_PLUGIN_MINIMUM_DOCUMENTS=10
+
+  mariadb:
+    image: mariadb:10.5
+    environment:
+      MYSQL_ROOT_PASSWORD: federation_root
+      MYSQL_DATABASE: federation
+      MYSQL_USER: federation
+      MYSQL_PASSWORD: federation
+    expose:
+      - "3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "federation", "-pfederation"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  redis:
+    image: redis:alpine
+    command: redis-server
+    expose:
+      - "6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
