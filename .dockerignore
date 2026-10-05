@@ -5,8 +5,8 @@
 .idea/
 .phpunit.result.cache
 .dockerignore
-Dockerfile.test
-docker-compose.test.yml
+Dockerfile
+docker-compose.yml
 federation/
 Makefile
 phpunit.xml
