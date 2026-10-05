@@ -6,7 +6,7 @@ target/release/net.nosial.bayesian_plugin.ncc:
 
 TEST_COMPOSE = docker compose -f docker-compose.yml
 SERVER_ENDPOINT ?= http://172.17.0.1:7000
-BAYESIAN_SERVER_ENDPOINT ?= http://172.17.0.1:6380
+SERVER_ACCESS_TOKEN ?= abcdefghijklmnopqrstuvwxyz123456
 
 # Starts the docker environment from Dockerfile, FederationLib's published dev image (pulled, a local copy may be
 # outdated) with the plugin built from source, installed and enabled
@@ -15,7 +15,7 @@ test-env:
 	$(TEST_COMPOSE) up -d
 	@echo "Waiting for the test environment to be ready..."
 	@for i in $$(seq 1 60); do \
-		if curl -sf -o /dev/null "$(SERVER_ENDPOINT)/" && curl -sf -o /dev/null "$(BAYESIAN_SERVER_ENDPOINT)/health"; then \
+		if curl -sf -o /dev/null "$(SERVER_ENDPOINT)/" && curl -sf -o /dev/null -H "Authorization: Bearer $(SERVER_ACCESS_TOKEN)" "$(SERVER_ENDPOINT)/bayesian/health"; then \
 			echo "The test environment is ready"; exit 0; \
 		fi; \
 		sleep 5; \
