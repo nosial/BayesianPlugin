@@ -1,0 +1,257 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - '**'
+  release:
+    types: [created]
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/nosial/ncc:latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Build project
+        run: |
+          ncc project install --log-level debug -y
+          ncc build --config release --log-level debug
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: release
+          path: target/release/net.nosial.bayesian_plugin.ncc
+
+  debug:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/nosial/ncc:latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Build project
+        run: |
+          ncc project install --log-level debug -y
+          ncc build --config debug --log-level debug
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: debug
+          path: target/debug/net.nosial.bayesian_plugin.ncc
+
+  # Check for phpunit.xml
+  check-phpunit:
+    runs-on: ubuntu-latest
+    outputs:
+      phpunit-exists: ${{ steps.check.outputs.phpunit-exists }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+      - name: Check for phpunit.xml
+        id: check
+        run: |
+          if [ -f phpunit.xml ]; then
+            echo "phpunit-exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "phpunit-exists=false" >> $GITHUB_OUTPUT
+          fi
+
+  # Check for phpdoc.dist.xml
+  check-phpdoc:
+    runs-on: ubuntu-latest
+    outputs:
+      phpdoc-exists: ${{ steps.check.outputs.phpdoc-exists }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+      - name: Check for phpdoc.dist.xml
+        id: check
+        run: |
+          if [ -f phpdoc.dist.xml ]; then
+            echo "phpdoc-exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "phpdoc-exists=false" >> $GITHUB_OUTPUT
+          fi
+
+  generate-phpdoc:
+    needs: [release, check-phpdoc]
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/nosial/ncc:latest
+    if: needs.check-phpdoc.outputs.phpdoc-exists == 'true'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Download PHPDocumentor
+        run: |
+          wget https://phpdoc.org/phpDocumentor.phar
+          chmod +x phpDocumentor.phar
+
+      - name: Generate PHPDoc
+        run: |
+          php phpDocumentor.phar -d src -t docs
+
+      - name: Archive PHPDoc
+        run: |
+          zip -r docs.zip docs
+
+      - name: Upload PHPDoc
+        uses: actions/upload-artifact@v7
+        with:
+          name: documentation
+          path: docs.zip
+
+
+  test:
+    needs: [release, debug, check-phpunit]
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/nosial/ncc:latest
+    if: needs.check-phpunit.outputs.phpunit-exists == 'true'
+    env:
+      # The BayesianServer started by this job (see "Start BayesianServer")
+      BAYESIAN_SERVER_ENDPOINT: http://127.0.0.1:6380
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      # FederationLib provides the plugin system, tests/bootstrap.php imports its build output from federation/
+      - name: Checkout FederationLib
+        uses: actions/checkout@v7
+        with:
+          repository: nosial/federationlib
+          path: federation
+
+      - name: Build FederationLib
+        run: |
+          cd federation
+          ncc project install --log-level debug -y
+          ncc build --config=release --log-level debug
+
+      - name: Install ncc packages
+        run: |
+          ncc project install --log-level debug -y
+          ncc build --config=release --log-level debug
+
+      # Runs BayesianServer the same way FederationLib's docker image does (supervisord.conf), without persistence
+      - name: Start BayesianServer
+        run: |
+          apt-get update -qq && apt-get install -y -qq --no-install-recommends openjdk-21-jre-headless curl
+          curl -sSfL "https://github.com/nosial/BayesianServer/releases/latest/download/bayesian-server.jar" -o /opt/bayesian-server.jar
+          mkdir -p /opt/bayesian-model
+          nohup java -jar /opt/bayesian-server.jar --port 6380 --model /opt/bayesian-model --filters all --save-interval 0 --label-chain true --mml true --am-enabled false > /opt/bayesian-server.log 2>&1 &
+          echo "Waiting for BayesianServer to be ready..."
+          for i in $(seq 1 60); do
+            if curl -sf -o /dev/null "$BAYESIAN_SERVER_ENDPOINT/health"; then
+              echo "BayesianServer is ready!"
+              exit 0
+            fi
+            echo "Attempt $i: BayesianServer not ready yet, waiting 2 seconds..."
+            sleep 2
+          done
+          echo "Timeout: BayesianServer did not become ready within 2 minutes"
+          cat /opt/bayesian-server.log
+          exit 1
+
+      - name: Download PHPUnit
+        run: wget https://phar.phpunit.de/phpunit-11.3.phar
+
+      - name: Run PHPUnit tests
+        run: |
+          mkdir -p "$PWD/reports"
+          chmod 777 "$PWD/reports"
+          php phpunit-11.3.phar --configuration phpunit.xml --log-junit "$PWD/reports/junit.xml" --log-teamcity "$PWD/reports/teamcity" --testdox-html "$PWD/reports/testdox.html" --testdox-text "$PWD/reports/testdox.txt"
+
+      - name: Collect BayesianServer log
+        if: always()
+        run: |
+          mkdir -p "$PWD/reports"
+          cp /opt/bayesian-server.log "$PWD/reports/bayesian-server.log" || true
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: reports
+          path: reports
+
+
+  release-documentation:
+    needs: generate-phpdoc
+    permissions: write-all
+    runs-on: ubuntu-latest
+    container:
+      image: php:8.5
+    if: github.event_name == 'release'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Download documentation artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: documentation
+          path: documentation
+
+      - name: Upload documentation artifact
+        uses: softprops/action-gh-release@v3
+        with:
+            files: |
+                documentation/*
+        env:
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+
+  release-artifacts:
+    needs: [release, debug]
+    permissions: write-all
+    runs-on: ubuntu-latest
+    container:
+      image: php:8.5
+    if: github.event_name == 'release'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Download release artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: release
+          path: release
+
+      - name: Upload release artifact to release
+        uses: softprops/action-gh-release@v3
+        with:
+            files: |
+                release/*
+        env:
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download debug artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: debug
+          path: debug
+
+      - name: Upload debug artifact to release
+        uses: softprops/action-gh-release@v3
+        with:
+            files: |
+                debug/*
+        env:
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
