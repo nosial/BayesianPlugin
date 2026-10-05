@@ -127,25 +127,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      # FederationLib provides the plugin system (only on its dev branch), tests/bootstrap.php imports its build output
-      # from federation/, the server the tests run against is its published image (ghcr.io/nosial/federationlib:dev)
-      - name: Checkout FederationLib
-        uses: actions/checkout@v7
-        with:
-          repository: nosial/federationlib
-          ref: dev
-          path: federation
-
-      - name: Build FederationLib
-        run: |
-          cd federation
-          ncc project install --log-level debug -y
-          ncc build --config=release --log-level debug
-
-      - name: Install ncc packages
-        run: |
-          ncc project install --log-level debug -y
-          ncc build --config=release --log-level debug
+      - name: Build project
+        run: ncc build --config=release --log-level debug
 
       - name: Deploy Docker Compose environment
         run: |
@@ -170,6 +153,26 @@ jobs:
 
       - name: Download PHPUnit
         run: wget https://phar.phpunit.de/phpunit-11.3.phar
+
+      # FederationLib provides the plugin system, which is only on its dev branch, while the plugin's dependency resolves
+      # to FederationLib's latest release. FederationLib's dev branch is installed first, together with its dependencies,
+      # then the plugin package, whose net.nosial.federation dependency is then satisfied by it. tests/bootstrap.php
+      # imports the installed net.nosial.federation. The server the tests run against is FederationLib's published image
+      # (ghcr.io/nosial/federationlib:dev)
+      - name: Checkout FederationLib
+        uses: actions/checkout@v7
+        with:
+          repository: nosial/federationlib
+          ref: dev
+          path: federation
+
+      - name: Install packages
+        run: |
+          cd federation
+          ncc build --config=release --log-level debug
+          ncc install --package=target/release/net.nosial.federation.ncc --yes --reinstall
+          cd ..
+          ncc install --package=target/release/net.nosial.bayesian_plugin.ncc --yes --reinstall
 
       # SERVER_ENDPOINT and BAYESIAN_SERVER_ENDPOINT are set by phpunit.xml (the docker host, 172.17.0.1)
       - name: Run PHPUnit tests

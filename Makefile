@@ -4,18 +4,9 @@ target/debug/net.nosial.bayesian_plugin.ncc:
 target/release/net.nosial.bayesian_plugin.ncc:
 	ncc build --configuration release --log-level debug
 
-# FederationLib provides the plugin system, tests/bootstrap.php imports its build output from the checkout in federation/
-FEDERATIONLIB_REPOSITORY ?= https://github.com/nosial/federationlib
-FEDERATIONLIB_BRANCH ?= dev
 TEST_COMPOSE = docker compose -f docker-compose.yml
 SERVER_ENDPOINT ?= http://172.17.0.1:7000
 BAYESIAN_SERVER_ENDPOINT ?= http://172.17.0.1:6380
-
-federation:
-	git clone --branch $(FEDERATIONLIB_BRANCH) $(FEDERATIONLIB_REPOSITORY) federation
-
-federation/target/release/net.nosial.federation.ncc: | federation
-	cd federation && ncc build --configuration release --log-level debug
 
 # Starts the docker environment from Dockerfile, FederationLib's published dev image (pulled, a local copy may be
 # outdated) with the plugin built from source, installed and enabled
