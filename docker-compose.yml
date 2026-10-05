@@ -6,10 +6,8 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      # FederationLib (SERVER_ENDPOINT)
+      # Federatiib (SERVER_ENDPOINT), the tests reach the bundled BayesianServer through the plugin's /bayesian proxy
       - "${FEDERATION_PORT:-7000}:7000"
-      # The BayesianServer bundled with FederationLib, used by the plugin and trained by the tests (BAYESIAN_SERVER_ENDPOINT)
-      - "${BAYESIAN_SERVER_PORT:-6380}:6380"
     depends_on:
       mariadb:
         condition: service_healthy
