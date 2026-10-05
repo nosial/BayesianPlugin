@@ -1,0 +1,32 @@
+source: src
+default_build: release
+assembly:
+  name: BayesianPlugin
+  package: net.nosial.bayesian_plugin
+  version: 1.0.0
+# FederationLib (and its dependencies ConfigLib and LogLib2) are provided by the host at runtime, plugins do not need
+# to depend on net.nosial.federation
+build_configurations:
+  -
+    name: debug
+    output: 'target/debug/${ASSEMBLY.PACKAGE}.ncc'
+    type: ncc
+    definitions:
+      NCC_DEBUG: true
+    options:
+      federationlib: &federationlib
+        event_handlers:
+          # Classifies the content of every content scan with BayesianServer
+          -
+            event: CONTENT_SCAN
+            class: \BayesianPlugin\EventHandlers\ContentScanHandler::class
+          # Trains BayesianServer with the text content of classified evidence
+          -
+            event: EVIDENCE_CLASSIFIED
+            class: \BayesianPlugin\EventHandlers\EvidenceClassifiedHandler::class
+  -
+    name: release
+    output: 'target/release/${ASSEMBLY.PACKAGE}.ncc'
+    type: ncc
+    options:
+      federationlib: *federationlib
