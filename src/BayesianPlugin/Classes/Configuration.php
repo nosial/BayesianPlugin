@@ -29,6 +29,9 @@
             self::$configuration->setDefault('minimum_documents', 10, 'BAYESIAN_PLUGIN_MINIMUM_DOCUMENTS');
             // Submit the text of classified evidence to BayesianServer for training
             self::$configuration->setDefault('learning', true, 'BAYESIAN_PLUGIN_LEARNING');
+            // Proxy BayesianServer's API below /bayesian for the root operator, disabled by default as it gives direct
+            // access to the model (including training it)
+            self::$configuration->setDefault('proxy', false, 'BAYESIAN_PLUGIN_PROXY');
 
             // Only save if the configuration file does not exist or we're in CLI mode
             if(!file_exists(self::$configuration->getPath()) || php_sapi_name() === 'cli')
@@ -106,6 +109,16 @@
         public static function isLearningEnabled(): bool
         {
             return self::getBoolean('learning', true);
+        }
+
+        /**
+         * Returns True if BayesianServer's API is proxied below /bayesian for the root operator
+         *
+         * @return bool True if the proxy is enabled
+         */
+        public static function isProxyEnabled(): bool
+        {
+            return self::getBoolean('proxy', false);
         }
 
         /**
