@@ -25,17 +25,17 @@ build_configurations:
           # Proxies BayesianServer's API for the root operator, eg; POST /bayesian/analytics to POST /analytics
           -
             path: /bayesian/*
-            class: \BayesianPlugin\RequestHandlers\BayesianProxyHandler::class
+            class: \BayesianPlugin\Handlers\BayesianProxyHandler::class
             request_method: GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, PUSH
         event_handlers:
           # Classifies the content of every content scan with BayesianServer
           -
             event: CONTENT_SCAN
-            class: \BayesianPlugin\EventHandlers\ContentScanHandler::class
+            class: \BayesianPlugin\Handlers\ContentScanHandler::class
           # Trains BayesianServer with the text content of classified evidence
           -
             event: RECORD_CHANGE
-            class: \BayesianPlugin\EventHandlers\EvidenceClassifiedHandler::class
+            class: \BayesianPlugin\Handlers\EvidenceClassifiedHandler::class
             filter: EVIDENCE_CLASSIFIED
   -
     name: release
