@@ -9,7 +9,7 @@ repository:
 assembly:
   name: BayesianPlugin
   package: net.nosial.bayesian_plugin
-  version: 1.0.1
+  version: 1.0.2
 dependencies:
   net.nosial.federation: nosial/federationlib@github
 build_configurations:
