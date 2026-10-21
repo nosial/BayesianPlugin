@@ -7,7 +7,7 @@ It provides FederationLib's Bayesian classification and training, which used to 
 ## Table of contents
 
 <!-- TOC -->
-* [<picture><source media="(prefers-color-scheme: dark)" srcset="assets/icon/bayesianplugin_light.svg"><img src="assets/icon/bayesianplugin_dark.svg" alt="BayesianPlugin" width="32" height="32"></picture> BayesianPlugin](#picturesource-mediaprefers-color-scheme-dark-srcsetassetsiconbayesianplugin_lightsvgimg-srcassetsiconbayesianplugin_darksvg-altbayesianplugin-width32-height32picture-bayesianplugin)
+* [BayesianPlugin](#bayesianplugin)
   * [Table of contents](#table-of-contents)
   * [What it does](#what-it-does)
   * [Configuration](#configuration)
