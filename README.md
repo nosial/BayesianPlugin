@@ -1,4 +1,4 @@
-# BayesianPlugin
+# <picture><source media="(prefers-color-scheme: dark)" srcset="assets/icon/bayesianplugin_light.svg"><img src="assets/icon/bayesianplugin_dark.svg" alt="BayesianPlugin" width="32" height="32"></picture> BayesianPlugin
 
 A [FederationLib](https://git.n64.cc/nosial/federationlib) plugin that classifies scanned content with
 [BayesianServer](https://github.com/nosial/BayesianServer) and trains it with the classifications assigned to evidence.
@@ -26,7 +26,9 @@ The plugin does two things: it classifies the content FederationLib scans, and i
 operators give to evidence.
 
 **Classifying content.** When content is scanned with `POST /scan`, every evidence item that has text is sent to
-BayesianServer and classified as `NORMAL`, `SUSPICIOUS` or `MALICIOUS`. FederationLib takes it from there: the
+BayesianServer (in one request) and classified as `NORMAL`, `SUSPICIOUS` or `MALICIOUS`, with `NORMAL` as the negative
+label. Content classified as `NORMAL` is learned as such later if it isn't classified in the meantime
+(`implicit_learning`, with BayesianServer's `--implicit-delay`), so the model sees ordinary traffic too. FederationLib takes it from there: the
 classification appears in the scan's `classification`, counts towards the risk score through the `CLASSIFICATION_*`
 scanning rules, and describes the evidence of reports that are generated automatically from a scan. The scan
 request's `top_k` and `threshold` parameters are passed on to BayesianServer.
@@ -35,10 +37,16 @@ request's `top_k` and `threshold` parameters are passed on to BayesianServer.
 train the model. This happens when:
 
  - evidence is submitted with a classification,
- - evidence is classified with `PATCH /evidence/{uuid}/classify`,
+ - evidence is classified (or reclassified) with `PATCH /evidence/{uuid}/classify`,
  - a report is closed with a classification.
 
-Learning can be turned off with the `learning` option.
+The text is sent as a correction (`PATCH /` of BayesianServer 1.0.4 and later): whatever the text was learned with
+before is replaced, so the latest classification of a text is the one the model knows. With older servers, or
+`--corrections false`, it's learned with `PUSH /` instead. Learning can be turned off with the `learning` option.
+
+Classifications BayesianServer missed (eg; while it was restarting)
+are learned by `federationlib bayesian-sync`, which the docker image runs every hour, and the content of deleted
+evidence is forgotten (unless other classified evidence has the same text).
 
 **When content isn't classified.** The plugin would rather not classify content than guess. It skips the
 classification when:
@@ -46,9 +54,23 @@ classification when:
  - the model hasn't been trained enough yet, it needs at least `minimum_documents` documents in total and for each of
    `NORMAL`, `SUSPICIOUS` and `MALICIOUS`,
  - the model contains a label the plugin doesn't know,
- - most of the content's words are unknown to the model (`classify_known_tokens`).
+ - most of the content's words are unknown to a Naive Bayes model (`classify_known_tokens`, the logistic model also
+   scores the characters of unknown words),
+ - the top label is `SUSPICIOUS` or `MALICIOUS` but BayesianServer doesn't predict it (it is below the server's decision
+   threshold, which the logistic model calibrates for a false positive rate),
+ - the top label is `SUSPICIOUS` or `MALICIOUS` and the probability that the content isn't `NORMAL` is below
+   `minimum_confidence`. A single classification can block content, report its author and hold back their reputation,
+   so a spam classification needs to be confident.
 
-The confidence of a classification is the probability BayesianServer gives its top label.
+**Telling SUSPICIOUS and MALICIOUS apart.** The text alone tells them apart poorly, what makes spam `MALICIOUS` is
+that it points somewhere. A contact route in the content (a link, a Telegram link, a handle or a phone number, or a
+named entity FederationLib resolved that isn't whitelisted), or an author that is blacklisted or has a negative
+reputation, confirms `MALICIOUS`. With `spam_severity` `upgrade` (default) the model decides and confirmed
+`SUSPICIOUS` spam becomes `MALICIOUS`; with `confirm` confirmed spam is `MALICIOUS` and other spam `SUSPICIOUS`
+(the label policy); with `model` the model decides alone.
+
+The confidence of a `NORMAL` classification is the probability BayesianServer gives it, the confidence of a
+`SUSPICIOUS` or `MALICIOUS` classification is the probability that the content isn't `NORMAL` (`1 - P(NORMAL)`).
 
 **If BayesianServer is unavailable**, scans and other operations still succeed, the content just isn't classified
 and the error is logged.
@@ -76,6 +98,7 @@ classified evidence. While disabled, `/bayesian` responds like a path that doesn
 |-----------------------------|-----------------------------------------------------------|
 | `ContentScanHandler`        | `CONTENT_SCAN`, classifies scanned content                |
 | `EvidenceClassifiedHandler` | `RECORD_CHANGE` (`EVIDENCE_CLASSIFIED`), trains the model |
+| `EvidenceDeletedHandler`    | `RECORD_CHANGE` (`EVIDENCE_DELETED`), forgets the content |
 | `BayesianProxyHandler`      | The `/bayesian/*` route, proxies BayesianServer's API     |
 
 ## Configuration
@@ -90,7 +113,10 @@ environment variable. The defaults connect to the BayesianServer bundled with th
 | `ssl`                   | `BAYESIAN_PLUGIN_SSL`                   | boolean | `false`       | Connect to BayesianServer with HTTPS                                                 |
 | `classify_known_tokens` | `BAYESIAN_PLUGIN_CLASSIFY_KNOWN_TOKENS` | boolean | `true`        | Skip the classification when the majority of the content's tokens are unknown        |
 | `minimum_documents`     | `BAYESIAN_PLUGIN_MINIMUM_DOCUMENTS`     | integer | `10`          | Training documents required in total and per label before content is classified      |
+| `minimum_confidence`    | `BAYESIAN_PLUGIN_MINIMUM_CONFIDENCE`    | float   | `0.9`         | Minimum probability that content isn't `NORMAL` for a spam classification            |
 | `learning`              | `BAYESIAN_PLUGIN_LEARNING`              | boolean | `true`        | Train BayesianServer with the text content of classified evidence                    |
+| `spam_severity`         | `BAYESIAN_PLUGIN_SPAM_SEVERITY`         | string  | `upgrade`     | How spam is split into `SUSPICIOUS`/`MALICIOUS`: `upgrade`, `confirm` or `model`      |
+| `implicit_learning`     | `BAYESIAN_PLUGIN_IMPLICIT_LEARNING`     | boolean | `true`        | Ask BayesianServer to learn content classified as `NORMAL` later                     |
 | `proxy`                 | `BAYESIAN_PLUGIN_PROXY`                 | boolean | `false`       | Proxy BayesianServer's API below `/bayesian` for the root operator                   |
 
 ## Installation
