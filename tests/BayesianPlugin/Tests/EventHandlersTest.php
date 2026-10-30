@@ -7,6 +7,7 @@
     use BayesianPlugin\BayesianPlugin;
     use BayesianPlugin\Handlers\ContentScanHandler;
     use BayesianPlugin\Handlers\EvidenceClassifiedHandler;
+    use BayesianPlugin\Handlers\EvidenceDeletedHandler;
     use BayesianPlugin\Tests\Helpers\FakeBayesianClient;
     use FederationLib\Enums\ClassificationFlag;
     use FederationLib\Enums\RecordChangeType;
@@ -25,6 +26,7 @@
         {
             $this->client = new FakeBayesianClient();
             BayesianPlugin::setClient($this->client);
+            ContentScanHandler::clearReadinessCache();
         }
 
         protected function tearDown(): void
@@ -52,12 +54,14 @@
             $this->assertSame(0.95, $contentScan->getEvidenceClassifications(2)[0]->getConfidence());
             $this->assertSame('fr', $contentScan->getEvidenceClassifications(2)[0]->getDetectedLanguage());
 
-            // The request's top_k and threshold are passed to BayesianServer, the model is only checked once
-            $this->assertSame([
-                ['text' => 'first', 'top_k' => 3, 'threshold' => 0.25],
-                ['text' => 'second', 'top_k' => 3, 'threshold' => 0.25],
-            ], $this->client->classifyCalls);
+            // Every text is classified in one request (with NORMAL learned implicitly), the model is only checked once
+            $this->assertSame([['texts' => ['first', 'second'], 'implicit_label' => 'NORMAL']], $this->client->batchCalls);
+            $this->assertSame([], $this->client->classifyCalls);
             $this->assertSame(1, $this->client->statusCalls);
+
+            // The readiness of the model is cached between scans when APCu is available
+            ContentScanHandler::handleContentScan(new ContentScan([new ContentInput('first')], null, null, []));
+            $this->assertSame(function_exists('apcu_enabled') && apcu_enabled() ? 1 : 2, $this->client->statusCalls);
 
             // Classifying never adds scanning rules of its own, the classification rules are applied by FederationLib
             $this->assertSame([], $contentScan->getScanResults());
@@ -73,18 +77,33 @@
 
             $this->assertSame([], $contentScan->getAddedClassifications());
             $this->assertSame([], $this->client->classifyCalls);
+            $this->assertSame([], $this->client->batchCalls);
         }
 
         public function testContentScanContinuesWhenAClassificationFails(): void
         {
-            $this->client->classifications['*'] = FakeBayesianClient::classification('SUSPICIOUS', 0.7);
+            $this->client->classifications['*'] = FakeBayesianClient::classification('SUSPICIOUS', 0.95);
             $this->client->failClassify = ['first'];
 
             $contentScan = new ContentScan([new ContentInput('first'), new ContentInput('second')], null, null, []);
             ContentScanHandler::handleContentScan($contentScan);
 
+            // The failed batch is classified text by text, only the failing text is not classified
             $this->assertSame([], $contentScan->getEvidenceClassifications(0));
             $this->assertCount(1, $contentScan->getEvidenceClassifications(1));
+            $this->assertCount(2, $this->client->classifyCalls);
+        }
+
+        public function testContentScanFallsBackForServersWithoutBatches(): void
+        {
+            $this->client->classifications['*'] = FakeBayesianClient::classification('MALICIOUS', 0.95);
+            $this->client->failBatch = true;
+
+            $contentScan = new ContentScan([new ContentInput('first'), new ContentInput('second')], null, null, []);
+            ContentScanHandler::handleContentScan($contentScan);
+
+            $this->assertCount(2, $contentScan->getAddedClassifications());
+            $this->assertSame(['first', 'second'], array_column($this->client->classifyCalls, 'text'));
         }
 
         public function testContentScanWithoutBayesianServer(): void
@@ -105,20 +124,21 @@
         public function testEvidenceClassifiedTrainsBayesianServer(): void
         {
             EvidenceClassifiedHandler::handleRecordChange($this->createChange('spam spam spam', ClassificationFlag::MALICIOUS));
-            $this->assertSame([['text' => 'spam spam spam', 'labels' => 'MALICIOUS']], $this->client->learnCalls);
+            $this->assertSame([['text' => 'spam spam spam', 'labels' => 'MALICIOUS', 'weight' => null]], $this->client->correctCalls);
+            $this->assertSame([], $this->client->learnCalls, 'classifications are learned as corrections, the latest one wins');
         }
 
         public function testEvidenceClassifiedWithoutTextContent(): void
         {
             EvidenceClassifiedHandler::handleRecordChange($this->createChange(null, ClassificationFlag::NORMAL));
-            $this->assertSame([], $this->client->learnCalls);
+            $this->assertSame([], $this->client->correctCalls);
         }
 
         public function testEvidenceClassifiedIgnoresLearnFailures(): void
         {
             $this->client->failLearn = true;
             EvidenceClassifiedHandler::handleRecordChange($this->createChange('hello', ClassificationFlag::NORMAL));
-            $this->assertCount(1, $this->client->learnCalls);
+            $this->assertCount(1, $this->client->correctCalls);
         }
 
         public function testOtherRecordChangesAreIgnored(): void
@@ -127,6 +147,19 @@
             EvidenceClassifiedHandler::handleRecordChange($this->createChange('hello', ClassificationFlag::NORMAL, RecordChangeType::EVIDENCE_CREATED));
             EvidenceClassifiedHandler::handleRecordChange($this->createChange('hello', null));
             $this->assertSame([], $this->client->learnCalls);
+        }
+
+        // ---------------------------------------------------------------------------------------------------------
+        // RECORD_CHANGE (EVIDENCE_DELETED)
+        // ---------------------------------------------------------------------------------------------------------
+
+        public function testDeletedEvidenceWithoutTextOrClassificationIsNotForgotten(): void
+        {
+            EvidenceDeletedHandler::handleRecordChange($this->createChange(null, ClassificationFlag::MALICIOUS, RecordChangeType::EVIDENCE_DELETED));
+            EvidenceDeletedHandler::handleRecordChange($this->createChange('never learned', null, RecordChangeType::EVIDENCE_DELETED));
+            EvidenceDeletedHandler::handleRecordChange(new RecordChange(RecordChangeType::EVIDENCE_DELETED, '01890a5d-ac96-774b-bcce-b302099a8057'));
+            $this->assertSame([], $this->client->forgetCalls);
+            $this->assertSame([], $this->client->correctCalls);
         }
 
         private function createChange(?string $textContent, ?ClassificationFlag $classification, RecordChangeType $type=RecordChangeType::EVIDENCE_CLASSIFIED): RecordChange
