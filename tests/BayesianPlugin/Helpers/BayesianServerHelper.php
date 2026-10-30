@@ -89,10 +89,34 @@
             }
 
             self::waitForLearning($client);
-            Assert::assertTrue(Classifier::isModelReady($client->getStatus()->getModel(), TrainingData::TRAINING_SAMPLES), 'The model is not ready after training');
+            self::waitForModel($client);
 
             self::$trained = true;
             return $client;
+        }
+
+        /**
+         * Waits until the model is ready to classify content, the logistic model learns the processed documents from
+         * its next background retrain on
+         *
+         * @param BayesianClient $client The client
+         * @return void
+         */
+        public static function waitForModel(BayesianClient $client): void
+        {
+            $deadline = time() + self::LEARNING_TIMEOUT;
+
+            while(time() < $deadline)
+            {
+                if(Classifier::isModelReady($client->getStatus()->getModel(), TrainingData::TRAINING_SAMPLES))
+                {
+                    return;
+                }
+
+                usleep(500000);
+            }
+
+            Assert::fail(sprintf('The model is not ready %d seconds after training', self::LEARNING_TIMEOUT));
         }
 
         /**
