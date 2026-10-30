@@ -78,6 +78,13 @@
                 return false;
             }
 
+            // The logistic model learns documents from its next background retrain on, until then it has no weights
+            if($model->getVocabularySize() === 0)
+            {
+                Logger::log()->warning('Skipping classification, the model is not trained yet');
+                return false;
+            }
+
             return true;
         }
 
