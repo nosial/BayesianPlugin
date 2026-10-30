@@ -48,8 +48,9 @@
             }
 
             $this->assertCount(1, $plugin->getEventHandlers(EventType::CONTENT_SCAN));
-            $this->assertCount(1, $plugin->getEventHandlers(EventType::RECORD_CHANGE));
+            $this->assertCount(2, $plugin->getEventHandlers(EventType::RECORD_CHANGE));
             $this->assertSame(['EVIDENCE_CLASSIFIED'], $plugin->getEventHandlers(EventType::RECORD_CHANGE)[0]->getFilter());
+            $this->assertSame(['EVIDENCE_DELETED'], $plugin->getEventHandlers(EventType::RECORD_CHANGE)[1]->getFilter());
             $this->assertSame([], $plugin->getEventHandlers(EventType::AUDIT_LOG));
 
             $result = PluginManager::validateRoutes([$plugin]);
