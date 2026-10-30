@@ -46,12 +46,52 @@
          * @param string $text The text to classify (required)
          * @param int|null $topK Maximum number of labels to return; null or <=0 returns all
          * @param float|null $threshold Override for the multi-label decision threshold (0..1); null uses server default
+         * @param string|null $negativeLabel The label of content where nothing was detected (eg; NORMAL), another label is
+         *                                   then only predicted when the content is unlikely enough to have it (logistic
+         *                                   model); null predicts every label by its own threshold
+         * @param string|null $implicitLabel A label (eg; NORMAL) BayesianServer learns the text with later if it predicts
+         *                                   only this label (logistic model with --implicit-delay)
          * @return BayesianClassification The classification result
          * @throws BayesianException On request failure
          */
-        public function classify(string $text, ?int $topK = null, ?float $threshold = null): BayesianClassification
+        public function classify(string $text, ?int $topK = null, ?float $threshold = null, ?string $negativeLabel = null, ?string $implicitLabel = null): BayesianClassification
         {
-            $data = ['text' => $text];
+            $data = self::classificationParameters(['text' => $text], $topK, $threshold, $negativeLabel, $implicitLabel);
+            $response = $this->request('POST', '/', $data, [200], 'Classification failed');
+            return $this->parse(fn() => BayesianClassification::fromArray($response), 'Classification failed');
+        }
+
+        /**
+         * @inheritDoc
+         */
+        public function classifyBatch(array $texts, ?int $topK = null, ?float $threshold = null, ?string $negativeLabel = null, ?string $implicitLabel = null): array
+        {
+            $data = self::classificationParameters(['texts' => array_values($texts)], $topK, $threshold, $negativeLabel, $implicitLabel);
+            $response = $this->request('POST', '/', $data, [200], 'Batch classification failed');
+            return $this->parse(function() use ($response, $texts)
+            {
+                $results = $response['results'] ?? null;
+                if(!is_array($results) || count($results) !== count($texts))
+                {
+                    throw new \InvalidArgumentException('The response does not hold a classification of every text');
+                }
+
+                return array_map(fn(array $result) => BayesianClassification::fromArray($result), array_values($results));
+            }, 'Batch classification failed');
+        }
+
+        /**
+         * Adds the optional classification parameters to a request body
+         *
+         * @param array $data The request body
+         * @param int|null $topK Maximum number of labels to return
+         * @param float|null $threshold The decision threshold
+         * @param string|null $negativeLabel The negative label
+         * @param string|null $implicitLabel The implicit label
+         * @return array The request body with the parameters that are set
+         */
+        private static function classificationParameters(array $data, ?int $topK, ?float $threshold, ?string $negativeLabel, ?string $implicitLabel): array
+        {
 
             if($topK !== null)
             {
@@ -63,8 +103,17 @@
                 $data['threshold'] = $threshold;
             }
 
-            $response = $this->request('POST', '/', $data, [200], 'Classification failed');
-            return $this->parse(fn() => BayesianClassification::fromArray($response), 'Classification failed');
+            if($negativeLabel !== null)
+            {
+                $data['negative_label'] = $negativeLabel;
+            }
+
+            if($implicitLabel !== null)
+            {
+                $data['implicit_label'] = $implicitLabel;
+            }
+
+            return $data;
         }
 
         /**
@@ -72,10 +121,11 @@
          *
          * @param string $text The document text
          * @param string|array $labels A single label string or an array of label strings
+         * @param float|null $weight How much the document counts in training (logistic model, default 1)
          * @return BayesianLearn The learn response
          * @throws BayesianException On request failure
          */
-        public function learn(string $text, string|array $labels): BayesianLearn
+        public function learn(string $text, string|array $labels, ?float $weight = null): BayesianLearn
         {
             if(is_string($labels))
             {
@@ -87,8 +137,55 @@
                 'labels' => $labels
             ];
 
+            if($weight !== null)
+            {
+                $data['weight'] = $weight;
+            }
+
             $response = $this->request('PUSH', '/', $data, [202, 503], 'Learn failed');
             return $this->parse(fn() => BayesianLearn::fromArray($response), 'Learn failed');
+        }
+
+        /**
+         * @inheritDoc
+         */
+        public function correct(string $text, string|array $labels, ?float $weight = null): BayesianLearn
+        {
+            $data = [
+                'text' => $text,
+                'labels' => is_string($labels) ? [$labels] : $labels
+            ];
+
+            if($weight !== null)
+            {
+                $data['weight'] = $weight;
+            }
+
+            try
+            {
+                $response = $this->request('PATCH', '/', $data, [202, 503], 'Correction failed');
+            }
+            catch(BayesianException $e)
+            {
+                // Servers without corrections (older versions or --corrections false) answer 405
+                if($e->getCode() !== 405)
+                {
+                    throw $e;
+                }
+
+                return $this->learn($text, $labels, $weight);
+            }
+
+            return $this->parse(fn() => BayesianLearn::fromArray($response), 'Correction failed');
+        }
+
+        /**
+         * @inheritDoc
+         */
+        public function forget(string $text): BayesianLearn
+        {
+            $response = $this->request('DELETE', '/', ['text' => $text], [202, 503], 'Forget failed');
+            return $this->parse(fn() => BayesianLearn::fromArray($response), 'Forget failed');
         }
 
         /**
@@ -204,6 +301,7 @@
 
                 case 'PUT':
                 case 'PUSH':
+                case 'PATCH':
                     curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
                     if($data)
                     {
