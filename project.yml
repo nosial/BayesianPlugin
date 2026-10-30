@@ -9,7 +9,7 @@ repository:
 assembly:
   name: BayesianPlugin
   package: net.nosial.bayesian_plugin
-  version: 1.0.2
+  version: 1.0.3
   url: 'https://github.com/nosial/BayesianPlugin'
   license: 'MIT'
   description: 'BayesianPlugin is a FederationLib plugin used to assist in scanning content using BayesianServer'
