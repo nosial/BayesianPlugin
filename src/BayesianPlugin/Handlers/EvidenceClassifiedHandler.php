@@ -4,6 +4,7 @@
 
     use BayesianPlugin\BayesianPlugin;
     use BayesianPlugin\Classes\Configuration;
+    use BayesianPlugin\Classes\Learner;
     use BayesianPlugin\Classes\Logger;
     use BayesianPlugin\Exceptions\BayesianException;
     use FederationLib\Enums\RecordChangeType;
@@ -11,11 +12,6 @@
     use FederationLib\Objects\EvidenceRecord;
     use FederationLib\Objects\Plugin\RecordChange;
 
-    /**
-     * Trains BayesianServer with the text content of evidence when it is classified (the EVIDENCE_CLASSIFIED record
-     * change), either when the evidence is submitted with a classification, classified directly or classified by
-     * closing a report
-     */
     class EvidenceClassifiedHandler implements RecordChangeEventHandlerInterface
     {
         /**
@@ -42,11 +38,15 @@
 
             try
             {
-                BayesianPlugin::getClient()->learn($textContent, $evidence->getClassificationFlag()->value);
+                $result = Learner::learn(BayesianPlugin::getClient(), $textContent, $evidence->getClassificationFlag()->value);
+                if(!$result->isAccepted())
+                {
+                    Logger::log()->warning('Bayesian learn rejected, the learning queue is full; bayesian-sync will learn it later');
+                }
             }
             catch(BayesianException $e)
             {
-                Logger::log()->warning('Bayesian learn failed: ' . $e->getMessage());
+                Logger::log()->warning('Bayesian learn failed, bayesian-sync will learn it later: ' . $e->getMessage());
             }
         }
     }
