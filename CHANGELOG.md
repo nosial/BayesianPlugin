@@ -5,9 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.2] - Ongoing
+## [1.0.2] - 2026-10-30
 
-This is an ongoing update
+This update introduces new improvements and fixes
 
 ### Added
  - `minimum_confidence` (`BAYESIAN_PLUGIN_MINIMUM_CONFIDENCE`, default `0.9`): a `SUSPICIOUS` or `MALICIOUS`
