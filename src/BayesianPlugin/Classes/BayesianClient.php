@@ -302,6 +302,7 @@
                 case 'PUT':
                 case 'PUSH':
                 case 'PATCH':
+                case 'DELETE':
                     curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
                     if($data)
                     {
