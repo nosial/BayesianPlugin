@@ -24,6 +24,14 @@
         public array $classifyCalls = [];
         /** @var array<int, array{text: string, labels: string|array}> */
         public array $learnCalls = [];
+        /** @var array<int, array{text: string, labels: string|array, weight: float|null}> */
+        public array $correctCalls = [];
+        /** @var string[] Texts forgotten with forget() */
+        public array $forgetCalls = [];
+        /** @var array<int, array{texts: string[], implicit_label: string|null}> */
+        public array $batchCalls = [];
+        /** True to fail classifyBatch() like a server without batches (HTTP 400) */
+        public bool $failBatch = false;
         public int $statusCalls = 0;
 
         /**
@@ -72,9 +80,10 @@
         /**
          * Returns a classification response
          */
-        public static function classification(string $topLabel, float $topProbability, int $knownTokens=10, int $unknownTokens=0, string $languageCode='en'): array
+        public static function classification(string $topLabel, float $topProbability, int $knownTokens=10, int $unknownTokens=0, string $languageCode='en', ?array $predictedLabels=null, array $posteriors=[]): array
         {
             return [
+                'predicted_labels' => $predictedLabels ?? [$topLabel],
                 'top_label' => $topLabel,
                 'top_probability' => $topProbability,
                 'known_tokens' => $knownTokens,
@@ -82,16 +91,16 @@
                 'total_tokens' => $knownTokens + $unknownTokens,
                 'language_code' => $languageCode,
                 'confidence' => 1.0,
-                'labels' => [],
+                'labels' => array_map(fn(string $label, float $posterior) => ['label' => $label, 'posterior' => $posterior, 'probability' => $posterior, 'log_score' => 0.0], array_keys($posteriors), array_values($posteriors)),
             ];
         }
 
         /**
          * @inheritDoc
          */
-        public function classify(string $text, ?int $topK = null, ?float $threshold = null): BayesianClassification
+        public function classify(string $text, ?int $topK = null, ?float $threshold = null, ?string $negativeLabel = null, ?string $implicitLabel = null): BayesianClassification
         {
-            $this->classifyCalls[] = ['text' => $text, 'top_k' => $topK, 'threshold' => $threshold];
+            $this->classifyCalls[] = ['text' => $text, 'top_k' => $topK, 'threshold' => $threshold, 'negative_label' => $negativeLabel, 'implicit_label' => $implicitLabel];
             if(in_array($text, $this->failClassify, true))
             {
                 throw new BayesianException('Classification failed: connection refused');
@@ -109,12 +118,71 @@
         /**
          * @inheritDoc
          */
-        public function learn(string $text, string|array $labels): BayesianLearn
+        public function classifyBatch(array $texts, ?int $topK = null, ?float $threshold = null, ?string $negativeLabel = null, ?string $implicitLabel = null): array
         {
-            $this->learnCalls[] = ['text' => $text, 'labels' => $labels];
+            $this->batchCalls[] = ['texts' => $texts, 'implicit_label' => $implicitLabel];
+            if($this->failBatch)
+            {
+                throw new BayesianException('Batch classification failed: HTTP 400', 400);
+            }
+
+            $results = [];
+            foreach($texts as $text)
+            {
+                if(in_array($text, $this->failClassify, true))
+                {
+                    throw new BayesianException('Batch classification failed: connection refused');
+                }
+
+                $response = $this->classifications[$text] ?? $this->classifications['*'] ?? null;
+                if($response === null)
+                {
+                    throw new BayesianException('No classification configured for: ' . $text);
+                }
+
+                $results[] = BayesianClassification::fromArray($response);
+            }
+
+            return $results;
+        }
+
+        /**
+         * @inheritDoc
+         */
+        public function learn(string $text, string|array $labels, ?float $weight = null): BayesianLearn
+        {
+            $this->learnCalls[] = ['text' => $text, 'labels' => $labels, 'weight' => $weight];
             if($this->failLearn)
             {
                 throw new BayesianException('Learn failed: connection refused');
+            }
+
+            return BayesianLearn::fromArray(['accepted' => true, 'submitted' => 1, 'rejected' => 0, 'pending' => 0, 'current_docs' => 0, 'max_docs' => 0, 'rejected_max_docs' => 0]);
+        }
+
+        /**
+         * @inheritDoc
+         */
+        public function correct(string $text, string|array $labels, ?float $weight = null): BayesianLearn
+        {
+            $this->correctCalls[] = ['text' => $text, 'labels' => $labels, 'weight' => $weight];
+            if($this->failLearn)
+            {
+                throw new BayesianException('Correction failed: connection refused');
+            }
+
+            return BayesianLearn::fromArray(['accepted' => true, 'submitted' => 1, 'rejected' => 0, 'pending' => 0, 'current_docs' => 0, 'max_docs' => 0, 'rejected_max_docs' => 0]);
+        }
+
+        /**
+         * @inheritDoc
+         */
+        public function forget(string $text): BayesianLearn
+        {
+            $this->forgetCalls[] = $text;
+            if($this->failLearn)
+            {
+                throw new BayesianException('Forget failed: connection refused');
             }
 
             return BayesianLearn::fromArray(['accepted' => true, 'submitted' => 1, 'rejected' => 0, 'pending' => 0, 'current_docs' => 0, 'max_docs' => 0, 'rejected_max_docs' => 0]);
