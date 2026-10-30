@@ -41,6 +41,9 @@
                     FakeBayesianClient::label('NORMAL', 50), FakeBayesianClient::label('MALICIOUS', 50),
                 ])],
                 'empty model' => [FakeBayesianClient::model([])],
+                'untrained model' => [FakeBayesianClient::model([
+                    FakeBayesianClient::label('NORMAL', 50), FakeBayesianClient::label('SUSPICIOUS', 50), FakeBayesianClient::label('MALICIOUS', 50),
+                ], vocabularySize: 0)],
             ];
         }
 
