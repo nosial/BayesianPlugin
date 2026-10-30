@@ -45,12 +45,12 @@
         /**
          * Returns model statistics with the given label statistics
          */
-        public static function model(array $labels, ?int $totalDocuments=null, ?int $labelCount=null): array
+        public static function model(array $labels, ?int $totalDocuments=null, ?int $labelCount=null, int $vocabularySize=100): array
         {
             return [
                 'total_documents' => $totalDocuments ?? array_sum(array_column($labels, 'document_count')),
                 'label_count' => $labelCount ?? count($labels),
-                'vocabulary_size' => 100,
+                'vocabulary_size' => $vocabularySize,
                 'total_token_occurrences' => 1000,
                 'total_document_tokens' => 1000,
                 'smoothing_alpha' => 1.0,
