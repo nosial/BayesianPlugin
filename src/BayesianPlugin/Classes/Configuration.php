@@ -23,14 +23,12 @@
             self::$configuration->setDefault('ssl', false, 'BAYESIAN_PLUGIN_SSL');
             self::$configuration->setDefault('host', '127.0.0.1', 'BAYESIAN_PLUGIN_HOST');
             self::$configuration->setDefault('port', 6380, 'BAYESIAN_PLUGIN_PORT');
-            // Skip the classification if the majority of the content's tokens are unknown to the model
             self::$configuration->setDefault('classify_known_tokens', true, 'BAYESIAN_PLUGIN_CLASSIFY_KNOWN_TOKENS');
-            // The minimum number of training documents of the model, and of every label, before content is classified
             self::$configuration->setDefault('minimum_documents', 10, 'BAYESIAN_PLUGIN_MINIMUM_DOCUMENTS');
-            // Submit the text of classified evidence to BayesianServer for training
+            self::$configuration->setDefault('minimum_confidence', 0.9, 'BAYESIAN_PLUGIN_MINIMUM_CONFIDENCE');
+            self::$configuration->setDefault('spam_severity', 'upgrade', 'BAYESIAN_PLUGIN_SPAM_SEVERITY');
             self::$configuration->setDefault('learning', true, 'BAYESIAN_PLUGIN_LEARNING');
-            // Proxy BayesianServer's API below /bayesian for the root operator, disabled by default as it gives direct
-            // access to the model (including training it)
+            self::$configuration->setDefault('implicit_learning', true, 'BAYESIAN_PLUGIN_IMPLICIT_LEARNING');
             self::$configuration->setDefault('proxy', false, 'BAYESIAN_PLUGIN_PROXY');
 
             // Only save if the configuration file does not exist or we're in CLI mode
@@ -102,6 +100,28 @@
         }
 
         /**
+         * Returns the minimum probability that content is not NORMAL for a SUSPICIOUS or MALICIOUS classification
+         * to be reported
+         *
+         * @return float The minimum confidence, between 0 and 1
+         */
+        public static function getMinimumConfidence(): float
+        {
+            return max(0.0, min(1.0, (float)self::get('minimum_confidence', 0.9)));
+        }
+
+        /**
+         * Returns how SUSPICIOUS and MALICIOUS are told apart once content is classified as spam
+         *
+         * @return string upgrade, confirm or model
+         */
+        public static function getSpamSeverity(): string
+        {
+            $mode = strtolower(trim((string)self::get('spam_severity', 'upgrade')));
+            return in_array($mode, ['upgrade', 'confirm', 'model'], true) ? $mode : 'upgrade';
+        }
+
+        /**
          * Returns True if the text of classified evidence is submitted to BayesianServer for training
          *
          * @return bool True if learning is enabled
@@ -109,6 +129,16 @@
         public static function isLearningEnabled(): bool
         {
             return self::getBoolean('learning', true);
+        }
+
+        /**
+         * Returns True if BayesianServer is asked to learn scanned content it classified as NORMAL later
+         *
+         * @return bool True if implicit learning is requested
+         */
+        public static function isImplicitLearningEnabled(): bool
+        {
+            return self::getBoolean('implicit_learning', true);
         }
 
         /**
