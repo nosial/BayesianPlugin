@@ -1,6 +1,6 @@
 source: src
 default_build: release
-update_source: nosial/federationlib@n64
+update_source: nosial/bayesianplugin@n64
 repository:
   name: n64
   type: github
@@ -10,6 +10,13 @@ assembly:
   name: BayesianPlugin
   package: net.nosial.bayesian_plugin
   version: 1.0.2
+  url: 'https://github.com/nosial/BayesianPlugin'
+  license: 'MIT'
+  description: 'BayesianPlugin is a FederationLib plugin used to assist in scanning content using BayesianServer'
+  author: 'Netkas <netkas@nosial.net>'
+  organization: 'Nosial'
+  product: 'Federation'
+  copyright: 'Copyright (c) 2022-2026 Nosial'
 dependencies:
   net.nosial.federation: nosial/federationlib@github
 build_configurations:
@@ -37,6 +44,11 @@ build_configurations:
             event: RECORD_CHANGE
             class: \BayesianPlugin\Handlers\EvidenceClassifiedHandler::class
             filter: EVIDENCE_CLASSIFIED
+          # Makes BayesianServer forget the text content of deleted evidence
+          -
+            event: RECORD_CHANGE
+            class: \BayesianPlugin\Handlers\EvidenceDeletedHandler::class
+            filter: EVIDENCE_DELETED
   -
     name: release
     output: 'target/release/${ASSEMBLY.PACKAGE}.ncc'
