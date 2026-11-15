@@ -6,6 +6,7 @@
     use BayesianPlugin\Classes\Classifier;
     use BayesianPlugin\Classes\Configuration;
     use BayesianPlugin\Classes\Logger;
+    use BayesianPlugin\Classes\TextContext;
     use BayesianPlugin\Exceptions\BayesianException;
     use BayesianPlugin\Interfaces\BayesianClientInterface;
     use FederationLib\Enums\ClassificationFlag;
@@ -14,7 +15,6 @@
 
     class ContentScanHandler implements ContentScanEventHandlerInterface
     {
-        private const string CONTACT_ROUTE_PATTERN = '/(https?:\/\/|www\.|\bt\.me\/|(?<![\w.])@[a-z0-9_]{4,}|\+?\d[\d\s().-]{7,}\d)/iu';
         private const string READY_CACHE_KEY = 'bayesian_plugin_model_ready';
         private const int READY_CACHE_TTL = 30;
 
@@ -27,10 +27,19 @@
             foreach($contentScan->getEvidence() as $evidenceIndex => $evidence)
             {
                 $textContent = $evidence->getTextContent();
-                if($textContent !== null && strlen($textContent) > 0)
+                if($textContent === null || strlen($textContent) === 0)
                 {
-                    $texts[$evidenceIndex] = $textContent;
+                    continue;
                 }
+
+                // A text that is (almost) only links, handles or phone numbers has no words for the model to judge.
+                if(!TextContext::hasEnoughContext($textContent))
+                {
+                    Logger::log()->debug(sprintf('Skipping classification of evidence %d, not enough text besides its links and contact routes', $evidenceIndex));
+                    continue;
+                }
+
+                $texts[$evidenceIndex] = $textContent;
             }
 
             if(count($texts) === 0)
@@ -158,7 +167,7 @@
          */
         public static function hasContactRoute(string $text): bool
         {
-            return preg_match(self::CONTACT_ROUTE_PATTERN, $text) === 1;
+            return TextContext::hasContactRoute($text);
         }
 
         /**
