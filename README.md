@@ -54,6 +54,10 @@ classification when:
  - the model hasn't been trained enough yet, it needs at least `minimum_documents` documents in total and for each of
    `NORMAL`, `SUSPICIOUS` and `MALICIOUS`,
  - the model contains a label the plugin doesn't know,
+ - the content has fewer than `minimum_context_words` words besides its links, Telegram links, handles, email
+   addresses, IP addresses and phone numbers (eg; a message that is only `t.me/name`). There is nothing for the model
+   to judge, whether such content is blocked is left to blacklists, reputation and other plugins (eg;
+   FederationAdGuard). The model doesn't learn such content either,
  - most of the content's words are unknown to a Naive Bayes model (`classify_known_tokens`, the logistic model also
    scores the characters of unknown words),
  - the top label is `SUSPICIOUS` or `MALICIOUS` but BayesianServer doesn't predict it (it is below the server's decision
@@ -114,8 +118,9 @@ environment variable. The defaults connect to the BayesianServer bundled with th
 | `classify_known_tokens` | `BAYESIAN_PLUGIN_CLASSIFY_KNOWN_TOKENS` | boolean | `true`        | Skip the classification when the majority of the content's tokens are unknown        |
 | `minimum_documents`     | `BAYESIAN_PLUGIN_MINIMUM_DOCUMENTS`     | integer | `10`          | Training documents required in total and per label before content is classified      |
 | `minimum_confidence`    | `BAYESIAN_PLUGIN_MINIMUM_CONFIDENCE`    | float   | `0.9`         | Minimum probability that content isn't `NORMAL` for a spam classification            |
+| `minimum_context_words` | `BAYESIAN_PLUGIN_MINIMUM_CONTEXT_WORDS` | integer | `3`           | Words required besides links, handles and phone numbers to classify or learn content |
 | `learning`              | `BAYESIAN_PLUGIN_LEARNING`              | boolean | `true`        | Train BayesianServer with the text content of classified evidence                    |
-| `spam_severity`         | `BAYESIAN_PLUGIN_SPAM_SEVERITY`         | string  | `upgrade`     | How spam is split into `SUSPICIOUS`/`MALICIOUS`: `upgrade`, `confirm` or `model`      |
+| `spam_severity`         | `BAYESIAN_PLUGIN_SPAM_SEVERITY`         | string  | `upgrade`     | How spam is split into `SUSPICIOUS`/`MALICIOUS`: `upgrade`, `confirm` or `model`     |
 | `implicit_learning`     | `BAYESIAN_PLUGIN_IMPLICIT_LEARNING`     | boolean | `true`        | Ask BayesianServer to learn content classified as `NORMAL` later                     |
 | `proxy`                 | `BAYESIAN_PLUGIN_PROXY`                 | boolean | `false`       | Proxy BayesianServer's API below `/bayesian` for the root operator                   |
 
