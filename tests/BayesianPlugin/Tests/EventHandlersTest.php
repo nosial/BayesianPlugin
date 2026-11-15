@@ -35,16 +35,12 @@
             Logger::unregisterHandlers();
         }
 
-        // ---------------------------------------------------------------------------------------------------------
-        // CONTENT_SCAN
-        // ---------------------------------------------------------------------------------------------------------
-
         public function testContentScanClassifiesEveryEvidenceItemWithText(): void
         {
-            $this->client->classifications['first'] = FakeBayesianClient::classification('NORMAL', 0.8);
-            $this->client->classifications['second'] = FakeBayesianClient::classification('MALICIOUS', 0.95, languageCode: 'fr');
+            $this->client->classifications['the first message'] = FakeBayesianClient::classification('NORMAL', 0.8);
+            $this->client->classifications['the second message'] = FakeBayesianClient::classification('MALICIOUS', 0.95, languageCode: 'fr');
 
-            $contentScan = new ContentScan([new ContentInput('first'), new ContentInput(null, 'no text'), new ContentInput('second')], null, null, [], null, 3, 0.25);
+            $contentScan = new ContentScan([new ContentInput('the first message'), new ContentInput(null, 'no text'), new ContentInput('the second message')], null, null, [], null, 3, 0.25);
             ContentScanHandler::handleContentScan($contentScan);
 
             $this->assertCount(2, $contentScan->getAddedClassifications());
@@ -55,12 +51,12 @@
             $this->assertSame('fr', $contentScan->getEvidenceClassifications(2)[0]->getDetectedLanguage());
 
             // Every text is classified in one request (with NORMAL learned implicitly), the model is only checked once
-            $this->assertSame([['texts' => ['first', 'second'], 'implicit_label' => 'NORMAL']], $this->client->batchCalls);
+            $this->assertSame([['texts' => ['the first message', 'the second message'], 'implicit_label' => 'NORMAL']], $this->client->batchCalls);
             $this->assertSame([], $this->client->classifyCalls);
             $this->assertSame(1, $this->client->statusCalls);
 
             // The readiness of the model is cached between scans when APCu is available
-            ContentScanHandler::handleContentScan(new ContentScan([new ContentInput('first')], null, null, []));
+            ContentScanHandler::handleContentScan(new ContentScan([new ContentInput('the first message')], null, null, []));
             $this->assertSame(function_exists('apcu_enabled') && apcu_enabled() ? 1 : 2, $this->client->statusCalls);
 
             // Classifying never adds scanning rules of its own, the classification rules are applied by FederationLib
@@ -72,7 +68,7 @@
             $this->client->model = FakeBayesianClient::readyModel(5);
             $this->client->classifications['*'] = FakeBayesianClient::classification('MALICIOUS', 0.9);
 
-            $contentScan = new ContentScan([new ContentInput('first'), new ContentInput('second')], null, null, []);
+            $contentScan = new ContentScan([new ContentInput('the first message'), new ContentInput('the second message')], null, null, []);
             ContentScanHandler::handleContentScan($contentScan);
 
             $this->assertSame([], $contentScan->getAddedClassifications());
@@ -83,9 +79,9 @@
         public function testContentScanContinuesWhenAClassificationFails(): void
         {
             $this->client->classifications['*'] = FakeBayesianClient::classification('SUSPICIOUS', 0.95);
-            $this->client->failClassify = ['first'];
+            $this->client->failClassify = ['the first message'];
 
-            $contentScan = new ContentScan([new ContentInput('first'), new ContentInput('second')], null, null, []);
+            $contentScan = new ContentScan([new ContentInput('the first message'), new ContentInput('the second message')], null, null, []);
             ContentScanHandler::handleContentScan($contentScan);
 
             // The failed batch is classified text by text, only the failing text is not classified
@@ -99,27 +95,23 @@
             $this->client->classifications['*'] = FakeBayesianClient::classification('MALICIOUS', 0.95);
             $this->client->failBatch = true;
 
-            $contentScan = new ContentScan([new ContentInput('first'), new ContentInput('second')], null, null, []);
+            $contentScan = new ContentScan([new ContentInput('the first message'), new ContentInput('the second message')], null, null, []);
             ContentScanHandler::handleContentScan($contentScan);
 
             $this->assertCount(2, $contentScan->getAddedClassifications());
-            $this->assertSame(['first', 'second'], array_column($this->client->classifyCalls, 'text'));
+            $this->assertSame(['the first message', 'the second message'], array_column($this->client->classifyCalls, 'text'));
         }
 
         public function testContentScanWithoutBayesianServer(): void
         {
             $this->client->failStatus = true;
 
-            $contentScan = new ContentScan([new ContentInput('first'), new ContentInput('second')], null, null, []);
+            $contentScan = new ContentScan([new ContentInput('the first message'), new ContentInput('the second message')], null, null, []);
             ContentScanHandler::handleContentScan($contentScan);
 
             // An unavailable BayesianServer never rejects the scan, the content is simply not classified
             $this->assertSame([], $contentScan->getAddedClassifications());
         }
-
-        // ---------------------------------------------------------------------------------------------------------
-        // RECORD_CHANGE (EVIDENCE_CLASSIFIED)
-        // ---------------------------------------------------------------------------------------------------------
 
         public function testEvidenceClassifiedTrainsBayesianServer(): void
         {
@@ -137,21 +129,17 @@
         public function testEvidenceClassifiedIgnoresLearnFailures(): void
         {
             $this->client->failLearn = true;
-            EvidenceClassifiedHandler::handleRecordChange($this->createChange('hello', ClassificationFlag::NORMAL));
+            EvidenceClassifiedHandler::handleRecordChange($this->createChange('hello there everyone', ClassificationFlag::NORMAL));
             $this->assertCount(1, $this->client->correctCalls);
         }
 
         public function testOtherRecordChangesAreIgnored(): void
         {
             // Only reachable when the handler is configured without its filter
-            EvidenceClassifiedHandler::handleRecordChange($this->createChange('hello', ClassificationFlag::NORMAL, RecordChangeType::EVIDENCE_CREATED));
-            EvidenceClassifiedHandler::handleRecordChange($this->createChange('hello', null));
+            EvidenceClassifiedHandler::handleRecordChange($this->createChange('hello there everyone', ClassificationFlag::NORMAL, RecordChangeType::EVIDENCE_CREATED));
+            EvidenceClassifiedHandler::handleRecordChange($this->createChange('hello there everyone', null));
             $this->assertSame([], $this->client->learnCalls);
         }
-
-        // ---------------------------------------------------------------------------------------------------------
-        // RECORD_CHANGE (EVIDENCE_DELETED)
-        // ---------------------------------------------------------------------------------------------------------
 
         public function testDeletedEvidenceWithoutTextOrClassificationIsNotForgotten(): void
         {

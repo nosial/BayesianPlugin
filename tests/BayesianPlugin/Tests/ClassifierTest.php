@@ -171,6 +171,44 @@
             }
         }
 
+        public static function contextWordsProvider(): array
+        {
+            return [
+                'telegram link without scheme' => ['t.me/blahblahblah', 0],
+                'telegram invite' => ['https://t.me/+abc', 0],
+                'domain with a path and query' => ['example.com/path?x=1', 0],
+                'handle' => ['@somehandle', 0],
+                'phone number' => ['+1 650 253 0000', 0],
+                'email address' => ['someone@example.com', 0],
+                'link and emoji' => ['t.me/x 🔥🔥', 0],
+                'several links' => ["t.me/a\nhttps://example.com/b www.example.org", 0],
+                'numbers only' => ['t.me/x 100 500', 0],
+                'words around a link' => ['check this out t.me/x', 3],
+                'spam around a link' => ['Earn $500 daily, DM me t.me/x', 4],
+                'plain text' => ['meet at the station', 4],
+                'chinese with a link' => ['加入我们的群组 t.me/x', 4],
+            ];
+        }
+
+        #[DataProvider('contextWordsProvider')]
+        public function testContextWords(string $text, int $expected): void
+        {
+            $this->assertSame($expected, \BayesianPlugin\Classes\TextContext::countContextWords($text));
+        }
+
+        public function testEnoughContext(): void
+        {
+            // Content that only points somewhere is left to blacklists, reputation and other plugins
+            $this->assertFalse(\BayesianPlugin\Classes\TextContext::hasEnoughContext('t.me/blahblahblah'));
+            $this->assertFalse(\BayesianPlugin\Classes\TextContext::hasEnoughContext('join t.me/blahblahblah'));
+            $this->assertTrue(\BayesianPlugin\Classes\TextContext::hasEnoughContext('free crypto signals, join t.me/blahblahblah'));
+
+            // A minimum of 0 classifies every text
+            $this->assertTrue(\BayesianPlugin\Classes\TextContext::hasEnoughContext('t.me/blahblahblah', 0));
+            $this->assertFalse(\BayesianPlugin\Classes\Learner::isLearnable('t.me/blahblahblah'));
+            $this->assertTrue(\BayesianPlugin\Classes\Learner::isLearnable('free crypto signals, join t.me/blahblahblah'));
+        }
+
         public function testClassifyThrowsOnFailure(): void
         {
             $client = new FakeBayesianClient();

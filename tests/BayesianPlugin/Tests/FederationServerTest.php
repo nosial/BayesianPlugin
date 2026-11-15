@@ -85,10 +85,6 @@
             Logger::unregisterHandlers();
         }
 
-        // ---------------------------------------------------------------------------------------------------------
-        // CONTENT_SCAN
-        // ---------------------------------------------------------------------------------------------------------
-
         public function testScanUsesTheClassificationOfBayesianServer(): void
         {
             foreach(ClassificationFlag::cases() as $flag)
@@ -152,10 +148,6 @@
             $this->assertSame(new ScannedContent([], null, $expected)->getClassification()->getClassificationFlag(), $scanned->getClassification()->getClassificationFlag());
         }
 
-        // ---------------------------------------------------------------------------------------------------------
-        // RECORD_CHANGE (EVIDENCE_CLASSIFIED)
-        // ---------------------------------------------------------------------------------------------------------
-
         public function testEvidenceSubmittedWithAClassificationTrainsBayesianServer(): void
         {
             $entityUuid = $this->createEntity();
@@ -207,10 +199,6 @@
 
             $this->waitForLearnRequests($before + count($submission->getEvidence()));
         }
-
-        // ---------------------------------------------------------------------------------------------------------
-        // BayesianServer proxy (/bayesian/*)
-        // ---------------------------------------------------------------------------------------------------------
 
         public function testProxyRequiresAuthentication(): void
         {
@@ -302,10 +290,6 @@
             $this->assertSame(405, $response['code']);
             $this->assertStringContainsString('method DELETE not allowed for /health', json_decode($response['body'], true)['error'] ?? '');
         }
-
-        // ---------------------------------------------------------------------------------------------------------
-        // Helpers
-        // ---------------------------------------------------------------------------------------------------------
 
         private static function getServerEndpoint(): string
         {
