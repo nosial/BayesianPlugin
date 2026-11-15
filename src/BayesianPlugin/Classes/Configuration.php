@@ -26,6 +26,7 @@
             self::$configuration->setDefault('classify_known_tokens', true, 'BAYESIAN_PLUGIN_CLASSIFY_KNOWN_TOKENS');
             self::$configuration->setDefault('minimum_documents', 10, 'BAYESIAN_PLUGIN_MINIMUM_DOCUMENTS');
             self::$configuration->setDefault('minimum_confidence', 0.9, 'BAYESIAN_PLUGIN_MINIMUM_CONFIDENCE');
+            self::$configuration->setDefault('minimum_context_words', 3, 'BAYESIAN_PLUGIN_MINIMUM_CONTEXT_WORDS');
             self::$configuration->setDefault('spam_severity', 'upgrade', 'BAYESIAN_PLUGIN_SPAM_SEVERITY');
             self::$configuration->setDefault('learning', true, 'BAYESIAN_PLUGIN_LEARNING');
             self::$configuration->setDefault('implicit_learning', true, 'BAYESIAN_PLUGIN_IMPLICIT_LEARNING');
@@ -108,6 +109,17 @@
         public static function getMinimumConfidence(): float
         {
             return max(0.0, min(1.0, (float)self::get('minimum_confidence', 0.9)));
+        }
+
+        /**
+         * Returns the minimum number of words a text needs besides its named entities and contact routes (links,
+         * handles, phone numbers, ...) to be classified or learned, 0 classifies and learns every text
+         *
+         * @return int The minimum number of words
+         */
+        public static function getMinimumContextWords(): int
+        {
+            return max(0, (int)self::get('minimum_context_words', 3));
         }
 
         /**
