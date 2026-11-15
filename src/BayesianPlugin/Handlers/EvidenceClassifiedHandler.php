@@ -31,7 +31,7 @@
             }
 
             $textContent = $evidence->getTextContent();
-            if($textContent === null || strlen($textContent) === 0)
+            if($textContent === null || !Learner::isLearnable($textContent))
             {
                 return;
             }
