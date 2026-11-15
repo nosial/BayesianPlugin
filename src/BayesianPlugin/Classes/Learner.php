@@ -32,6 +32,18 @@
         }
 
         /**
+         * Returns True if the text is learned at all: the model learns only the texts it would classify, a text that
+         * is (almost) only links, handles or phone numbers would teach it that a link alone decides the label
+         *
+         * @param string $text The text content of the evidence
+         * @return bool True if the text should be learned
+         */
+        public static function isLearnable(string $text): bool
+        {
+            return strlen($text) > 0 && TextContext::hasEnoughContext($text);
+        }
+
+        /**
          * Forgets the content of deleted evidence. Other classified evidence with the same text keeps the text
          * learned: it's learned again with the latest of their classifications instead.
          *
