@@ -5,9 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.3] - Ongoing
+## [1.0.3] - 2026-11-15
 
-This is an ongoing update
+This update introduces new features and fixes existing issues.
+
+### Added
+ - `minimum_context_words` (`BAYESIAN_PLUGIN_MINIMUM_CONTEXT_WORDS`, default `3`): content is only classified, and
+   classified evidence only learned, when it has at least this many words besides its links, Telegram links, handles,
+   email addresses, IP addresses and phone numbers, `0` classifies and learns all content
+ - `TextContext`, how much natural language a text holds besides the places it points to
+ - `Learner::isLearnable()`, used by `EvidenceClassifiedHandler` and FederationLib's `bayesian sync`
+
+### Fixed
+ - Content that was only a link (eg; `t.me/name`) was classified from the link alone: the model scored little more
+   than the link's placeholder token, and the link confirmed the spam as `MALICIOUS`, which was enough to block the
+   content. Such content is no longer classified, whether it's blocked is left to blacklists, reputation and other
+   plugins
+ - Requests to BayesianServer had no time limit, an unresponsive BayesianServer held every content scan indefinitely;
+   a connection may now take 5 seconds and a request 15 seconds, a request that takes longer fails like an unreachable
+   BayesianServer and the scan continues without a classification
 
 
 ## [1.0.2] - 2026-10-30
