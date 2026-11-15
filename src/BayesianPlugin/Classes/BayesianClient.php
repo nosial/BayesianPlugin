@@ -14,6 +14,9 @@
 
     class BayesianClient implements BayesianClientInterface
     {
+        public const int CONNECT_TIMEOUT = 5;
+        public const int TIMEOUT = 15;
+
         private string $endpoint;
         /** @var string[] */
         private array $headers;
@@ -411,6 +414,8 @@
             ]);
 
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, self::CONNECT_TIMEOUT);
+            curl_setopt($ch, CURLOPT_TIMEOUT, self::TIMEOUT);
 
             return $ch;
         }
