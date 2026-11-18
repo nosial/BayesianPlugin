@@ -60,12 +60,14 @@
 
         public function testScanResultsIncludeTheClassification(): void
         {
+            // At least minimum_context_words (3) words, shorter texts are not classified
+            $text = 'buy cheap pills now';
             $client = new FakeBayesianClient();
-            $client->classifications['bad'] = FakeBayesianClient::classification('MALICIOUS', 0.9);
+            $client->classifications[$text] = FakeBayesianClient::classification('MALICIOUS', 0.9);
             BayesianPlugin::setClient($client);
             PluginManager::setPlugins([Plugin::load(self::PACKAGE)]);
 
-            $contentScan = new ContentScan([new ContentInput('bad')], null, null, []);
+            $contentScan = new ContentScan([new ContentInput($text)], null, null, []);
             PluginManager::dispatchContentScan($contentScan);
 
             // The same way ScanContent builds the scan results
